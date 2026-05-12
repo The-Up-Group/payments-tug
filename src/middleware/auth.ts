@@ -13,7 +13,7 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction):
         return;
     }
     try {
-        const secret = process.env.JWT_SECRET as string; 
+        const secret = process.env.JWT_SECRET_KEY as string;
         jwt.verify(token, secret);
         next();
     } catch (err){
