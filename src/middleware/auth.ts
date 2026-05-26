@@ -17,6 +17,7 @@ export const authMiddleware = (req: Request, res: Response, next: NextFunction):
         jwt.verify(token, secret);
         next();
     } catch (err){
+        console.error('[auth] jwt.verify failed:', err);
         res.status(401).json({error: 'Invalid or expired token'});
     }
 };
