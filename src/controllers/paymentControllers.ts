@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import Stripe from 'stripe';
-import { PaymentRequest } from '../types';
+import { PaymentRequest } from '../types/paymentTypes';
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
