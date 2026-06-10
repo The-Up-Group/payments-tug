@@ -1,12 +1,17 @@
 export interface PaymentRequest {
     amount: number;
     currency: string;
-    metadata?: { [key: string]: string}; 
+    customerId: string;
+    destinationAccountId: string;
+    appId: string;
+    eventId: string;
+    paymentMethodId?: string;
 }
 
 export interface PaymentResponse {
-    clientSecret: string;
+    clientSecret: string | null;
     paymentIntentId: string;
+    platformFee: number;
 }
 
 export interface PaymentStatusResponse {

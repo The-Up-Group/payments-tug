@@ -5,26 +5,41 @@ import { PaymentRequest } from '../types/paymentTypes';
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
 export const createPayment = async (req: Request, res: Response): Promise<void> => {
-  const { amount, currency, metadata } = req.body as PaymentRequest;
+  const { amount, currency, customerId, destinationAccountId, appId, eventId, paymentMethodId } = req.body as PaymentRequest;
 
-  if (!amount || !currency || amount <= 0) {
-    res.status(400).json({ error: 'Invalid amount or currency' });
+  if (!amount || amount <= 0 || !currency || !customerId || !destinationAccountId || !appId || !eventId) {
+    res.status(400).json({ error: 'Missing required fields' });
     return;
   }
+
+  const platformFee = Math.round(amount * 0.10);
 
   try {
     const paymentIntent = await getStripe().paymentIntents.create({
         amount,
         currency,
-        metadata,
-        automatic_payment_methods: { enabled: true },
+        customer: customerId,
+        application_fee_amount: platformFee,
+        transfer_data: { destination: destinationAccountId },
+        metadata: { appId, eventId },
+        ...(paymentMethodId && {
+            payment_method: paymentMethodId,
+            confirm: true,
+            off_session: true,
+        }),
     });
-    res.status(200).json({
-        clientSecret: paymentIntent.client_secret!,
+
+    res.status(201).json({
+        clientSecret: paymentIntent.client_secret,
         paymentIntentId: paymentIntent.id,
+        platformFee,
     });
   } catch (err) {
-    res.status(500).json({ error: 'Failed to create payment' });
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    res.status(500).json({
+        error: 'Failed to create payment',
+        ...(process.env.NODE_ENV !== 'production' && { detail: message }),
+    });
   }
 };
 
