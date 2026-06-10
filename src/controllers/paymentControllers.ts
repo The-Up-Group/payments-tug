@@ -4,6 +4,7 @@ import { PaymentRequest } from '../types/paymentTypes';
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
+// create a payment
 export const createPayment = async (req: Request, res: Response): Promise<void> => {
   const { amount, currency, customerId, destinationAccountId, appId, eventId, paymentMethodId } = req.body as PaymentRequest;
 

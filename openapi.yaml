@@ -1,0 +1,498 @@
+openapi: 3.0.0
+info:
+  title: payments-tug API
+  version: 1.0.0
+
+servers:
+  - url: https://payments.theupgroup.com.mx
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        detail:
+          type: string
+          description: Only present in non-production environments
+
+paths:
+  /health:
+    get:
+      summary: Health Check
+      security: []
+      responses:
+        '200':
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /payments:
+    post:
+      summary: Create a payment intent
+      description: Creates a Stripe PaymentIntent with Connect transfer to the organizer. If paymentMethodId is provided the intent is confirmed immediately.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - amount
+                - currency
+                - customerId
+                - destinationAccountId
+                - appId
+                - eventId
+              properties:
+                amount:
+                  type: integer
+                  description: Total in cents
+                  example: 50000
+                currency:
+                  type: string
+                  example: mxn
+                customerId:
+                  type: string
+                  example: cus_xxx
+                destinationAccountId:
+                  type: string
+                  description: Stripe Connect account ID of the organizer
+                  example: acct_xxx
+                appId:
+                  type: string
+                  example: spot
+                eventId:
+                  type: string
+                  example: uuid
+                paymentMethodId:
+                  type: string
+                  description: If provided, intent is confirmed immediately (saved card flow)
+                  example: pm_xxx
+      responses:
+        '201':
+          description: Payment intent created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clientSecret:
+                    type: string
+                    description: null when paymentMethodId was provided
+                  paymentIntentId:
+                    type: string
+                  platformFee:
+                    type: integer
+                    description: Platform fee in cents (10%)
+                    example: 5000
+        '400':
+          description: Missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to create payment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /payments/{id}:
+    get:
+      summary: Get payment status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: pi_xxx
+      responses:
+        '200':
+          description: Payment status retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  status:
+                    type: string
+                    example: succeeded
+                  amount:
+                    type: integer
+                    example: 50000
+                  currency:
+                    type: string
+                    example: mxn
+        '500':
+          description: Failed to retrieve payment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /payments/customers:
+    post:
+      summary: Create or get Stripe customer
+      description: Finds an existing Stripe customer by userId + appId metadata, or creates a new one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - appId
+              properties:
+                appId:
+                  type: string
+                  example: spot
+      responses:
+        '200':
+          description: Existing customer found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  customerId:
+                    type: string
+                    example: cus_xxx
+                  isNew:
+                    type: boolean
+                    example: false
+        '201':
+          description: New customer created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  customerId:
+                    type: string
+                    example: cus_xxx
+                  isNew:
+                    type: boolean
+                    example: true
+        '400':
+          description: appId is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to create or retrieve customer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /payments/customers/{customerId}/payment-methods:
+    get:
+      summary: List saved payment methods
+      description: Returns all saved cards for a Stripe customer.
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: cus_xxx
+      responses:
+        '200':
+          description: Payment methods retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paymentMethods:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          example: pm_xxx
+                        cardBrand:
+                          type: string
+                          example: visa
+                        last4:
+                          type: string
+                          example: '4242'
+                        expMonth:
+                          type: integer
+                          example: 12
+                        expYear:
+                          type: integer
+                          example: 2027
+        '400':
+          description: customerId is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to retrieve payment methods
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /payments/payment-methods/{pmId}:
+    delete:
+      summary: Delete a saved payment method
+      parameters:
+        - name: pmId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: pm_xxx
+      responses:
+        '200':
+          description: Payment method deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '400':
+          description: pmId is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to delete payment method
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /payments/setup-intents:
+    post:
+      summary: Create a setup intent
+      description: Creates a Stripe SetupIntent to save a card without charging. Flutter uses the clientSecret with CardField to confirm.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - customerId
+                - appId
+              properties:
+                customerId:
+                  type: string
+                  example: cus_xxx
+                appId:
+                  type: string
+                  example: spot
+      responses:
+        '201':
+          description: SetupIntent created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clientSecret:
+                    type: string
+                    example: seti_xxx_secret_xxx
+        '400':
+          description: customerId and appId are required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to create setup intent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /payments/accounts/onboard:
+    post:
+      summary: Onboard organizer — create Stripe Connect account
+      description: Creates a Stripe Connect account for the organizer and returns a KYC URL to open in the browser.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - appId
+                - email
+                - refreshUrl
+                - returnUrl
+              properties:
+                appId:
+                  type: string
+                  example: spot
+                email:
+                  type: string
+                  example: organizer@email.com
+                refreshUrl:
+                  type: string
+                  description: Stripe redirects here if the onboarding link expires
+                  example: https://yourapp.com/organizer/refresh
+                returnUrl:
+                  type: string
+                  description: Stripe redirects here after KYC is completed
+                  example: https://yourapp.com/organizer/return
+      responses:
+        '201':
+          description: Organizer account created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accountId:
+                    type: string
+                    example: acct_xxx
+                  onboardingUrl:
+                    type: string
+                    example: https://connect.stripe.com/setup/e/...
+        '400':
+          description: Missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to create organizer account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /payments/accounts/{accountId}/status:
+    get:
+      summary: Get organizer account status
+      description: Returns whether the organizer has completed KYC and can receive charges.
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: acct_xxx
+      responses:
+        '200':
+          description: Account status retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accountId:
+                    type: string
+                    example: acct_xxx
+                  chargesEnabled:
+                    type: boolean
+                    example: true
+                  detailsSubmitted:
+                    type: boolean
+                    example: true
+        '500':
+          description: Failed to retrieve account status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /payments/accounts/{accountId}:
+    delete:
+      summary: Delete organizer account
+      description: Permanently deletes a Stripe Connect account. Required for Apple App Store compliance.
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: acct_xxx
+      responses:
+        '200':
+          description: Account deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '400':
+          description: accountId is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to delete organizer account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /webhooks/stripe:
+    post:
+      summary: Stripe webhook receiver
+      description: Receives events from Stripe. Verifies signature and forwards to SPOT backend. Must NOT include Authorization header.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  example: payment_intent.succeeded
+                data:
+                  type: object
+      responses:
+        '200':
+          description: Event received
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean
+                    example: true
+        '400':
+          description: Webhook signature verification failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

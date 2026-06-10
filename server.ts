@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import paymentsRouter from './src/routes/payments';
 import { handleStripeWebhook } from './src/controllers/webhookControllers';
+import { setupDocs } from './src/docs/swagger';
 
 dotenv.config();
 
@@ -17,5 +18,7 @@ app.use('/payments', paymentsRouter);
 app.get('/health', (_req, res) => {
     res.status(200).json({ status: 'ok' });
 });
+
+setupDocs(app);
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
