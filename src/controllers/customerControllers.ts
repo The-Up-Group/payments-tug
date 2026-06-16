@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import Stripe from 'stripe';
-import { CreateCustomerRequest, CreateCustomereResponse, PaymentMethods } from '../types/customerTypes';
+import { CreateCustomerRequest, CreateCustomereResponse, PaymentMethods, CreateCustomerSessionRequest, CreateCustomerSessionResponse } from '../types/customerTypes';
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
@@ -70,6 +70,36 @@ export const listCustomerPaymentMethods = async (req: Request, res: Response): P
         });
     }
 }
+
+export const createCustomerSession = async (req: Request, res: Response): Promise<void> => {
+    const { customerId } = req.body as CreateCustomerSessionRequest;
+
+    if (!customerId) {
+        res.status(400).json({ error: 'customerId is required' });
+        return;
+    }
+    try {
+        const session = await getStripe().customerSessions.create({
+            customer: customerId,
+            components: {
+                payment_element: {
+                    enabled: true,
+                    features: {
+                        payment_method_save: 'enabled',
+                        payment_method_remove: 'enabled',
+                    },
+                },
+            },
+        });
+        res.status(201).json({ clientSecret: session.client_secret } as CreateCustomerSessionResponse);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        res.status(500).json({
+            error: 'Failed to create customer session',
+            ...(process.env.NODE_ENV !== 'production' && { detail: message }),
+        });
+    }
+};
 
 export const deleteCustomerPaymentMethod = async (req: Request, res: Response): Promise<void> => {
     const pmId = req.params.pmId as string;

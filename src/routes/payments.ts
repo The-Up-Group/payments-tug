@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { AuthMiddleware } from '../middleware/auth';
 import { createPayment, getPaymentStatus } from '../controllers/paymentControllers';
-import { createOrGetCustomer, listCustomerPaymentMethods, deleteCustomerPaymentMethod } from '../controllers/customerControllers';
+import { createOrGetCustomer, listCustomerPaymentMethods, deleteCustomerPaymentMethod, createCustomerSession } from '../controllers/customerControllers';
 import { setupIntents } from '../controllers/setIntentControllers';
 import { createOrganizerAccount, getOrganizerAccountStatus, deleteOrganizerAccount } from '../controllers/organizerControllers';
 
@@ -13,6 +13,7 @@ router.get('/:id', AuthMiddleware, getPaymentStatus);
 
 // Customers
 router.post('/customers', AuthMiddleware, createOrGetCustomer);
+router.post('/customers/session', AuthMiddleware, createCustomerSession);
 router.get('/customers/:customerId/payment-methods', AuthMiddleware, listCustomerPaymentMethods);
 router.delete('/payment-methods/:pmId', AuthMiddleware, deleteCustomerPaymentMethod);
 

@@ -18,3 +18,11 @@ export interface PaymentMethods {
 export interface ListPaymentMethodsResponse {
     paymentMethods: PaymentMethods[];
 }
+
+export interface CreateCustomerSessionRequest {
+    customerId: string;
+}
+
+export interface CreateCustomerSessionResponse {
+    clientSecret: string;
+}

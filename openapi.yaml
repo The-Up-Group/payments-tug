@@ -205,6 +205,46 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /payments/customers/session:
+    post:
+      summary: Create a customer session
+      description: Creates a short-lived Stripe CustomerSession. Pass the returned clientSecret to Stripe.js Payment Element to display and manage saved cards.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - customerId
+              properties:
+                customerId:
+                  type: string
+                  example: cus_xxx
+      responses:
+        '201':
+          description: Customer session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clientSecret:
+                    type: string
+                    example: cuss_xxx_secret_xxx
+        '400':
+          description: customerId is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to create customer session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /payments/customers/{customerId}/payment-methods:
     get:
       summary: List saved payment methods
