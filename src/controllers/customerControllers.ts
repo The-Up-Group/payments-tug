@@ -89,6 +89,13 @@ export const createCustomerSession = async (req: Request, res: Response): Promis
                         payment_method_remove: 'enabled',
                     },
                 },
+                mobile_payment_element: {
+                    enabled: true,
+                    features: {
+                        payment_method_save: 'enabled',
+                        payment_method_remove: 'enabled',
+                    },
+                },
             },
         });
         res.status(201).json({ clientSecret: session.client_secret } as CreateCustomerSessionResponse);

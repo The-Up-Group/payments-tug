@@ -44,10 +44,10 @@ export const createOrganizerAccount = async (req: Request, res: Response): Promi
 }
 
 export const getOrganizerAccountStatus = async (req: Request, res: Response): Promise<void> => {
-    const id = req.params.id as string;
+    const accountId = req.params.accountId as string;
 
     try {
-        const account: any = await getStripe().accounts.retrieve(id);
+        const account: any = await getStripe().accounts.retrieve(accountId);
 
         const response: OrganizerAccountStatusResponse = {
             accountId: account.id,
