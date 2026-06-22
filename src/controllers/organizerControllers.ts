@@ -17,7 +17,10 @@ export const createOrganizerAccount = async (req: Request, res: Response): Promi
             controller: {
                 fees: {
                     payer: 'application',
-                }
+                },
+                stripe_dashboard: {
+                    type: 'express',
+                },
             },
             email: email,
             metadata: { appId: appId},
