@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import Stripe from 'stripe';
-import { OnboardOrganizerRequest, OnboardOrganizerResponse, OrganizerAccountStatusResponse } from '../types/organizerTypes';
+import { OnboardOrganizerRequest, OnboardOrganizerResponse, OrganizerAccountStatusResponse, CreateAccountLinkRequest, CreateAccountLinkResponse } from '../types/organizerTypes';
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
@@ -69,6 +69,33 @@ export const getOrganizerAccountStatus = async (req: Request, res: Response): Pr
         })
     }
 }
+
+export const createOrganizerAccountLink = async (req: Request, res: Response): Promise<void> => {
+    const accountId = req.params.accountId as string;
+    const { refreshUrl, returnUrl } = req.body as CreateAccountLinkRequest;
+
+    if (!accountId || !refreshUrl || !returnUrl) {
+        res.status(400).json({ error: 'Missing required fields' });
+        return;
+    }
+
+    try {
+        const accountLink: any = await getStripe().accountLinks.create({
+            account: accountId,
+            refresh_url: refreshUrl,
+            return_url: returnUrl,
+            type: 'account_onboarding',
+        });
+        const response: CreateAccountLinkResponse = { onboardingUrl: accountLink.url };
+        res.status(200).json(response);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown Error';
+        res.status(500).json({
+            error: 'Failed to create account link',
+            ...(process.env.NODE_ENV !== 'production' && { detail: message }),
+        });
+    }
+};
 
 export const deleteOrganizerAccount = async (req: Request, res: Response): Promise<void> => {
     const accountId = req.params.accountId as string;

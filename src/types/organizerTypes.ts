@@ -15,3 +15,12 @@ export interface OrganizerAccountStatusResponse {
     chargesEnabled: boolean;
     detailsSubmitted: boolean;
 }
+
+export interface CreateAccountLinkRequest {
+    refreshUrl: string;
+    returnUrl: string;
+}
+
+export interface CreateAccountLinkResponse {
+    onboardingUrl: string;
+}

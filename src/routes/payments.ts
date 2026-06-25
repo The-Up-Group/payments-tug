@@ -3,7 +3,7 @@ import { AuthMiddleware } from '../middleware/auth';
 import { createPayment, getPaymentStatus } from '../controllers/paymentControllers';
 import { createOrGetCustomer, listCustomerPaymentMethods, deleteCustomerPaymentMethod, createCustomerSession } from '../controllers/customerControllers';
 import { setupIntents } from '../controllers/setIntentControllers';
-import { createOrganizerAccount, getOrganizerAccountStatus, deleteOrganizerAccount } from '../controllers/organizerControllers';
+import { createOrganizerAccount, getOrganizerAccountStatus, deleteOrganizerAccount, createOrganizerAccountLink } from '../controllers/organizerControllers';
 
 const router = Router();
 
@@ -22,6 +22,7 @@ router.post('/setup-intents', AuthMiddleware, setupIntents);
 
 // Organizer
 router.post('/accounts/onboard', AuthMiddleware, createOrganizerAccount);
+router.post('/accounts/:accountId/link', AuthMiddleware, createOrganizerAccountLink);
 router.get('/accounts/:accountId/status', AuthMiddleware, getOrganizerAccountStatus);
 router.delete('/accounts/:accountId', AuthMiddleware, deleteOrganizerAccount);
 
