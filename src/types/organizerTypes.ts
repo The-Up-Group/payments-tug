@@ -24,3 +24,28 @@ export interface CreateAccountLinkRequest {
 export interface CreateAccountLinkResponse {
     onboardingUrl: string;
 }
+
+export interface OrganizerBalanceResponse {
+    available: number;
+    currency: string;
+}
+
+export interface OrganizerPayout {
+    id: string;
+    amount: number;
+    currency: string;
+    arrivalDate: number;
+    status: string;
+    description: string | null;
+}
+
+export interface OrganizerPayoutsResponse {
+    payouts: OrganizerPayout[];
+}
+
+export interface OrganizerChargesResponse {
+    monthlyTotal: number;
+    currency: string;
+    ticketsSold: number;
+    spotCommission: number;
+}

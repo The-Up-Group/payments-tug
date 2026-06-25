@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import Stripe from 'stripe';
-import { OnboardOrganizerRequest, OnboardOrganizerResponse, OrganizerAccountStatusResponse, CreateAccountLinkRequest, CreateAccountLinkResponse } from '../types/organizerTypes';
+import { OnboardOrganizerRequest, OnboardOrganizerResponse, OrganizerAccountStatusResponse, CreateAccountLinkRequest, CreateAccountLinkResponse, OrganizerBalanceResponse, OrganizerPayoutsResponse, OrganizerChargesResponse } from '../types/organizerTypes';
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
@@ -92,6 +92,94 @@ export const createOrganizerAccountLink = async (req: Request, res: Response): P
         const message = err instanceof Error ? err.message : 'Unknown Error';
         res.status(500).json({
             error: 'Failed to create account link',
+            ...(process.env.NODE_ENV !== 'production' && { detail: message }),
+        });
+    }
+};
+
+export const getOrganizerBalance = async (req: Request, res: Response): Promise<void> => {
+    const accountId = req.params.accountId as string;
+
+    try {
+        const balance = await getStripe().balance.retrieve({ stripeAccount: accountId });
+
+        const available = balance.available[0];
+        const response: OrganizerBalanceResponse = {
+            available: available?.amount ?? 0,
+            currency: available?.currency ?? 'mxn',
+        };
+        res.status(200).json(response);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        res.status(500).json({
+            error: 'Failed to retrieve organizer balance',
+            ...(process.env.NODE_ENV !== 'production' && { detail: message }),
+        });
+    }
+};
+
+export const getOrganizerCharges = async (req: Request, res: Response): Promise<void> => {
+    const accountId = req.params.accountId as string;
+
+    try {
+        const list = await getStripe().charges.list(
+            { limit: 100 },
+            { stripeAccount: accountId },
+        );
+
+        const now = new Date();
+        const monthStart = Math.floor(new Date(now.getFullYear(), now.getMonth(), 1).getTime() / 1000);
+
+        const monthlyCharges = list.data.filter(
+            (c) => c.paid && !c.refunded && c.created >= monthStart,
+        );
+
+        const monthlyTotal = monthlyCharges.reduce((sum, c) => sum + c.amount, 0);
+        const ticketsSold = monthlyCharges.length;
+        const spotCommission = Math.round(monthlyTotal * 0.1);
+
+        const currency = monthlyCharges[0]?.currency ?? list.data[0]?.currency ?? 'mxn';
+
+        const response: OrganizerChargesResponse = {
+            monthlyTotal,
+            currency,
+            ticketsSold,
+            spotCommission,
+        };
+        res.status(200).json(response);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        res.status(500).json({
+            error: 'Failed to retrieve organizer charges',
+            ...(process.env.NODE_ENV !== 'production' && { detail: message }),
+        });
+    }
+};
+
+export const getOrganizerPayouts = async (req: Request, res: Response): Promise<void> => {
+    const accountId = req.params.accountId as string;
+
+    try {
+        const list = await getStripe().payouts.list(
+            { limit: 10 },
+            { stripeAccount: accountId },
+        );
+
+        const response: OrganizerPayoutsResponse = {
+            payouts: list.data.map((p) => ({
+                id: p.id,
+                amount: p.amount,
+                currency: p.currency,
+                arrivalDate: p.arrival_date,
+                status: p.status,
+                description: p.description,
+            })),
+        };
+        res.status(200).json(response);
+    } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        res.status(500).json({
+            error: 'Failed to retrieve organizer payouts',
             ...(process.env.NODE_ENV !== 'production' && { detail: message }),
         });
     }

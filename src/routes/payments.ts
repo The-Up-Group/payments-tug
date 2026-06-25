@@ -3,7 +3,7 @@ import { AuthMiddleware } from '../middleware/auth';
 import { createPayment, getPaymentStatus } from '../controllers/paymentControllers';
 import { createOrGetCustomer, listCustomerPaymentMethods, deleteCustomerPaymentMethod, createCustomerSession } from '../controllers/customerControllers';
 import { setupIntents } from '../controllers/setIntentControllers';
-import { createOrganizerAccount, getOrganizerAccountStatus, deleteOrganizerAccount, createOrganizerAccountLink } from '../controllers/organizerControllers';
+import { createOrganizerAccount, getOrganizerAccountStatus, deleteOrganizerAccount, createOrganizerAccountLink, getOrganizerBalance, getOrganizerPayouts, getOrganizerCharges } from '../controllers/organizerControllers';
 
 const router = Router();
 
@@ -24,6 +24,9 @@ router.post('/setup-intents', AuthMiddleware, setupIntents);
 router.post('/accounts/onboard', AuthMiddleware, createOrganizerAccount);
 router.post('/accounts/:accountId/link', AuthMiddleware, createOrganizerAccountLink);
 router.get('/accounts/:accountId/status', AuthMiddleware, getOrganizerAccountStatus);
+router.get('/accounts/:accountId/balance', AuthMiddleware, getOrganizerBalance);
+router.get('/accounts/:accountId/payouts', AuthMiddleware, getOrganizerPayouts);
+router.get('/accounts/:accountId/charges', AuthMiddleware, getOrganizerCharges);
 router.delete('/accounts/:accountId', AuthMiddleware, deleteOrganizerAccount);
 
 export default router;
