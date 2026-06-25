@@ -18,6 +18,9 @@ export const createOrganizerAccount = async (req: Request, res: Response): Promi
                 fees: {
                     payer: 'application',
                 },
+                losses: {
+                    payments: 'application',
+                },
                 stripe_dashboard: {
                     type: 'express',
                 },
