@@ -101,7 +101,7 @@ export const getOrganizerBalance = async (req: Request, res: Response): Promise<
     const accountId = req.params.accountId as string;
 
     try {
-        const balance = await getStripe().balance.retrieve({ stripeAccount: accountId });
+        const balance = await getStripe().balance.retrieve({}, { stripeAccount: accountId });
 
         const available = balance.available[0];
         const response: OrganizerBalanceResponse = {
