@@ -31,6 +31,7 @@ describe('createPayment', () => {
         currency: 'usd',
         customerId: 'cus_123',
         destinationAccountId: 'acct_123',
+        applicationFeeAmount: 100,
         appId: 'app_1',
         eventId: 'evt_1',
     };
@@ -53,7 +54,36 @@ describe('createPayment', () => {
         expect(res.body.error).toBe('Missing required fields');
     });
 
-    it('returns 201 with clientSecret, paymentIntentId and platformFee', async () => {
+    it('returns 400 when applicationFeeAmount is missing', async () => {
+        const { applicationFeeAmount, ...rest } = validBody;
+
+        const res = await request(app)
+            .post('/payments')
+            .send(rest);
+
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe('Invalid applicationFeeAmount');
+    });
+
+    it('returns 400 when applicationFeeAmount is negative', async () => {
+        const res = await request(app)
+            .post('/payments')
+            .send({ ...validBody, applicationFeeAmount: -1 });
+
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe('Invalid applicationFeeAmount');
+    });
+
+    it('returns 400 when applicationFeeAmount exceeds amount', async () => {
+        const res = await request(app)
+            .post('/payments')
+            .send({ ...validBody, applicationFeeAmount: 1001 });
+
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe('Invalid applicationFeeAmount');
+    });
+
+    it('returns 201 with clientSecret, paymentIntentId and the client-provided platformFee', async () => {
         mockPaymentIntentsCreate.mockResolvedValueOnce({
             id: 'pi_123',
             client_secret: 'pi_123_secret',
@@ -66,18 +96,19 @@ describe('createPayment', () => {
         expect(res.status).toBe(201);
         expect(res.body.paymentIntentId).toBe('pi_123');
         expect(res.body.clientSecret).toBe('pi_123_secret');
-        // 10% of 1000 = 100
         expect(res.body.platformFee).toBe(100);
+
+        const callArgs = mockPaymentIntentsCreate.mock.calls[0][0];
+        expect(callArgs.application_fee_amount).toBe(100);
     });
 
-    it('calculates the platform fee correctly for a different amount', async () => {
+    it('passes through a fractional-commission fee unchanged (rounded)', async () => {
         mockPaymentIntentsCreate.mockResolvedValueOnce({ id: 'pi_456', client_secret: 'secret' });
 
         const res = await request(app)
             .post('/payments')
-            .send({ ...validBody, amount: 3333 });
+            .send({ ...validBody, amount: 3333, applicationFeeAmount: 333.3 });
 
-        // Math.round(3333 * 0.10) = Math.round(333.3) = 333
         expect(res.body.platformFee).toBe(333);
     });
 

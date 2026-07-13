@@ -56,6 +56,7 @@ paths:
                 - currency
                 - customerId
                 - destinationAccountId
+                - applicationFeeAmount
                 - appId
                 - eventId
               properties:
@@ -73,6 +74,10 @@ paths:
                   type: string
                   description: Stripe Connect account ID of the organizer
                   example: acct_xxx
+                applicationFeeAmount:
+                  type: integer
+                  description: Platform fee in cents, computed by the client from the organizer's commission rate. Must be >= 0 and <= amount.
+                  example: 5000
                 appId:
                   type: string
                   example: spot
@@ -98,10 +103,10 @@ paths:
                     type: string
                   platformFee:
                     type: integer
-                    description: Platform fee in cents (10%)
+                    description: Platform fee in cents, echoed back from applicationFeeAmount
                     example: 5000
         '400':
-          description: Missing required fields
+          description: Missing required fields, or applicationFeeAmount is missing/negative/greater than amount
           content:
             application/json:
               schema:

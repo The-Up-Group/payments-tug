@@ -3,6 +3,7 @@ export interface PaymentRequest {
     currency: string;
     customerId: string;
     destinationAccountId: string;
+    applicationFeeAmount: number;
     appId: string;
     eventId: string;
     paymentMethodId?: string;
