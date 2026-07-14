@@ -27,6 +27,7 @@ export interface CreateAccountLinkResponse {
 
 export interface OrganizerBalanceResponse {
     available: number;
+    pending: number;
     currency: string;
 }
 

@@ -25,6 +25,14 @@ export const createOrganizerAccount = async (req: Request, res: Response): Promi
                     type: 'express',
                 },
             },
+            settings: {
+                payouts: {
+                    schedule: {
+                        interval: 'weekly',
+                        weekly_anchor: 'friday',
+                    },
+                },
+            },
             email: email,
             metadata: { appId: appId},
         })
@@ -104,9 +112,11 @@ export const getOrganizerBalance = async (req: Request, res: Response): Promise<
         const balance = await getStripe().balance.retrieve({}, { stripeAccount: accountId });
 
         const available = balance.available[0];
+        const pending = balance.pending[0];
         const response: OrganizerBalanceResponse = {
             available: available?.amount ?? 0,
-            currency: available?.currency ?? 'mxn',
+            pending: pending?.amount ?? 0,
+            currency: available?.currency ?? pending?.currency ?? 'mxn',
         };
         res.status(200).json(response);
     } catch (err) {
