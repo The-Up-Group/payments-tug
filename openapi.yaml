@@ -59,6 +59,9 @@ paths:
                 - applicationFeeAmount
                 - appId
                 - eventId
+                - userId
+                - ticketTypeId
+                - quantity
               properties:
                 amount:
                   type: integer
@@ -84,6 +87,18 @@ paths:
                 eventId:
                   type: string
                   example: uuid
+                userId:
+                  type: string
+                  description: Supabase user id of the buyer, stored in the PaymentIntent metadata so the payment-webhook edge function can create the event_bookings row(s)
+                  example: uuid
+                ticketTypeId:
+                  type: string
+                  description: event_ticket_types id being purchased, stored in the PaymentIntent metadata
+                  example: uuid
+                quantity:
+                  type: integer
+                  description: Number of tickets being purchased. Must be >= 1.
+                  example: 1
                 paymentMethodId:
                   type: string
                   description: If provided, intent is confirmed immediately (saved card flow)
@@ -467,6 +482,187 @@ paths:
                     example: true
         '500':
           description: Failed to retrieve account status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /payments/accounts/{accountId}/link:
+    post:
+      summary: Create a new organizer onboarding link
+      description: Generates a fresh Stripe Connect onboarding (KYC) link for an existing account, used when the organizer left onboarding mid-way and wants to resume.
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: acct_xxx
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refreshUrl
+                - returnUrl
+              properties:
+                refreshUrl:
+                  type: string
+                  description: Stripe redirects here if the onboarding link expires
+                  example: https://yourapp.com/organizer/refresh
+                returnUrl:
+                  type: string
+                  description: Stripe redirects here after KYC is completed
+                  example: https://yourapp.com/organizer/return
+      responses:
+        '200':
+          description: Onboarding link created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  onboardingUrl:
+                    type: string
+                    example: https://connect.stripe.com/setup/e/...
+        '400':
+          description: Missing required fields
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Failed to create account link
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /payments/accounts/{accountId}/balance:
+    get:
+      summary: Get organizer balance
+      description: Returns the connected account's Stripe balance. `available` can be paid out now; `pending` is still in Stripe's holding period and will move to `available` automatically.
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: acct_xxx
+      responses:
+        '200':
+          description: Balance retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  available:
+                    type: integer
+                    description: Amount in cents available for payout now
+                    example: 1245000
+                  pending:
+                    type: integer
+                    description: Amount in cents still in Stripe's holding period
+                    example: 50000
+                  currency:
+                    type: string
+                    example: mxn
+        '500':
+          description: Failed to retrieve organizer balance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /payments/accounts/{accountId}/payouts:
+    get:
+      summary: Get organizer payouts
+      description: Returns the connected account's 10 most recent Stripe payouts.
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: acct_xxx
+      responses:
+        '200':
+          description: Payouts retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  payouts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          example: po_xxx
+                        amount:
+                          type: integer
+                          example: 50000
+                        currency:
+                          type: string
+                          example: mxn
+                        arrivalDate:
+                          type: integer
+                          description: Unix timestamp (seconds)
+                          example: 1735689600
+                        status:
+                          type: string
+                          example: in_transit
+                        description:
+                          type: string
+                          nullable: true
+        '500':
+          description: Failed to retrieve organizer payouts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /payments/accounts/{accountId}/charges:
+    get:
+      summary: Get organizer charges summary for the current month
+      description: Aggregates the connected account's Stripe charges since the start of the current calendar month (paid, non-refunded only).
+      parameters:
+        - name: accountId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: acct_xxx
+      responses:
+        '200':
+          description: Charges summary retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  monthlyTotal:
+                    type: integer
+                    description: Sum of charge amounts this month, in cents
+                    example: 1500000
+                  currency:
+                    type: string
+                    example: mxn
+                  ticketsSold:
+                    type: integer
+                    description: Number of paid, non-refunded charges this month
+                    example: 30
+                  spotCommission:
+                    type: integer
+                    description: Sum of application_fee_amount across this month's charges, in cents
+                    example: 150000
+        '500':
+          description: Failed to retrieve organizer charges
           content:
             application/json:
               schema:

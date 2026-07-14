@@ -34,6 +34,9 @@ describe('createPayment', () => {
         applicationFeeAmount: 100,
         appId: 'app_1',
         eventId: 'evt_1',
+        userId: 'user_1',
+        ticketTypeId: 'ticket_type_1',
+        quantity: 1,
     };
 
     it('returns 400 when required fields are missing', async () => {
