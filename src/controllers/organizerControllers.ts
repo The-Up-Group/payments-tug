@@ -136,7 +136,13 @@ export const getOrganizerCharges = async (req: Request, res: Response): Promise<
 
         const monthlyTotal = monthlyCharges.reduce((sum, c) => sum + c.amount, 0);
         const ticketsSold = monthlyCharges.length;
-        const spotCommission = Math.round(monthlyTotal * 0.1);
+        // Suma la comisión real cobrada en cada charge (application_fee_amount),
+        // no un porcentaje fijo — la comisión varía por organizador
+        // (event_organizers.event_commission, gestionada en el cliente).
+        const spotCommission = monthlyCharges.reduce(
+            (sum, c) => sum + (c.application_fee_amount ?? 0),
+            0,
+        );
 
         const currency = monthlyCharges[0]?.currency ?? list.data[0]?.currency ?? 'mxn';
 

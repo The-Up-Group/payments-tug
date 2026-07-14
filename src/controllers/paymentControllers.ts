@@ -6,9 +6,9 @@ const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
 // create a payment
 export const createPayment = async (req: Request, res: Response): Promise<void> => {
-  const { amount, currency, customerId, destinationAccountId, applicationFeeAmount, appId, eventId, paymentMethodId } = req.body as PaymentRequest;
+  const { amount, currency, customerId, destinationAccountId, applicationFeeAmount, appId, eventId, userId, ticketTypeId, quantity, paymentMethodId } = req.body as PaymentRequest;
 
-  if (!amount || amount <= 0 || !currency || !customerId || !destinationAccountId || !appId || !eventId) {
+  if (!amount || amount <= 0 || !currency || !customerId || !destinationAccountId || !appId || !eventId || !userId || !ticketTypeId || !quantity || quantity <= 0) {
     res.status(400).json({ error: 'Missing required fields' });
     return;
   }
@@ -33,7 +33,7 @@ export const createPayment = async (req: Request, res: Response): Promise<void> 
         customer: customerId,
         application_fee_amount: platformFee,
         transfer_data: { destination: destinationAccountId },
-        metadata: { appId, eventId },
+        metadata: { appId, eventId, userId, ticketTypeId, quantity: String(quantity) },
         ...(paymentMethodId && {
             payment_method: paymentMethodId,
             confirm: true,

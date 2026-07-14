@@ -6,6 +6,9 @@ export interface PaymentRequest {
     applicationFeeAmount: number;
     appId: string;
     eventId: string;
+    userId: string;
+    ticketTypeId: string;
+    quantity: number;
     paymentMethodId?: string;
 }
 
