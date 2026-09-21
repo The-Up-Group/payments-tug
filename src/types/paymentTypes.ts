@@ -10,6 +10,9 @@ export interface PaymentRequest {
     ticketTypeId: string;
     quantity: number;
     paymentMethodId?: string;
+    /** Solo presente en compras de guest checkout — viaja en el metadata del
+     * PaymentIntent para que el webhook pueda escribirlo en `event_bookings.guest_email`. */
+    guestEmail?: string;
 }
 
 export interface PaymentResponse {
@@ -37,6 +40,8 @@ export interface CheckoutSessionRequest {
     ticketTypeId: string;
     quantity: number;
     returnUrl: string;
+    /** Ver `PaymentRequest.guestEmail`. */
+    guestEmail?: string;
 }
 
 export interface CheckoutSessionResponse {

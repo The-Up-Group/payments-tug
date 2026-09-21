@@ -6,7 +6,7 @@ const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
 // create a payment
 export const createPayment = async (req: Request, res: Response): Promise<void> => {
-  const { amount, currency, customerId, destinationAccountId, applicationFeeAmount, appId, eventId, userId, ticketTypeId, quantity, paymentMethodId } = req.body as PaymentRequest;
+  const { amount, currency, customerId, destinationAccountId, applicationFeeAmount, appId, eventId, userId, ticketTypeId, quantity, paymentMethodId, guestEmail } = req.body as PaymentRequest;
 
   if (!amount || amount <= 0 || !currency || !customerId || !destinationAccountId || !appId || !eventId || !userId || !ticketTypeId || !quantity || quantity <= 0) {
     res.status(400).json({ error: 'Missing required fields' });
@@ -33,7 +33,7 @@ export const createPayment = async (req: Request, res: Response): Promise<void> 
         customer: customerId,
         application_fee_amount: platformFee,
         transfer_data: { destination: destinationAccountId },
-        metadata: { appId, eventId, userId, ticketTypeId, quantity: String(quantity) },
+        metadata: { appId, eventId, userId, ticketTypeId, quantity: String(quantity), ...(guestEmail && { guestEmail }) },
         ...(paymentMethodId && {
             payment_method: paymentMethodId,
             confirm: true,
@@ -57,7 +57,7 @@ export const createPayment = async (req: Request, res: Response): Promise<void> 
 
 // Controller funcional solo para web ya que no existe flutter payment sheet en web.
 export const createCheckoutSession = async (req: Request, res: Response): Promise<void> => {
-  const { amount, currency, customerId, destinationAccountId, applicationFeeAmount, appId, eventId, userId, ticketTypeId, quantity, returnUrl } = req.body as CheckoutSessionRequest;
+  const { amount, currency, customerId, destinationAccountId, applicationFeeAmount, appId, eventId, userId, ticketTypeId, quantity, returnUrl, guestEmail } = req.body as CheckoutSessionRequest;
 
   if (!amount || amount <= 0 || !currency || !customerId || !destinationAccountId || !appId || !eventId || !userId || !ticketTypeId || !quantity || quantity <= 0 || !returnUrl) {
     res.status(400).json({ error: 'Missing required fields' });
@@ -95,9 +95,13 @@ export const createCheckoutSession = async (req: Request, res: Response): Promis
         payment_intent_data: {
             application_fee_amount: platformFee,
             transfer_data: { destination: destinationAccountId },
-            metadata: { appId, eventId, userId, ticketTypeId, quantity: String(quantity) },
+            // Este es el metadata que termina en el PaymentIntent y, por lo
+            // tanto, el que lee el webhook (`payment_intent.succeeded`) para
+            // armar el `event_bookings` — el `metadata` de la Checkout Session
+            // de abajo es un objeto aparte que el webhook no consulta.
+            metadata: { appId, eventId, userId, ticketTypeId, quantity: String(quantity), ...(guestEmail && { guestEmail }) },
         },
-        metadata: { appId, eventId, userId, ticketTypeId, quantity: String(quantity) },
+        metadata: { appId, eventId, userId, ticketTypeId, quantity: String(quantity), ...(guestEmail && { guestEmail }) },
     });
 
     const paymentIntentId = typeof session.payment_intent === 'string'
