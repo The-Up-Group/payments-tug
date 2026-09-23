@@ -23,6 +23,7 @@ app.post('/webhooks/stripe', express.raw({ type: 'application/json' }), handleSt
 beforeAll(() => {
     process.env.STRIPE_SECRET_KEY = 'fake-stripe-key';
     process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
+    process.env.PAYMENT_WEBHOOK_SECRET = 'forward-secret-test';
 });
 
 beforeEach(() => {
@@ -73,6 +74,48 @@ describe('handleStripeWebhook', () => {
         expect(forwarded.paymentIntentId).toBe('pi_123');
         expect(forwarded.amount).toBe(1000);
         expect(forwarded.currency).toBe('usd');
+
+        // payment-webhook authenticates the forward with this shared secret
+        expect(mockFetch.mock.calls[0][1].headers['x-webhook-secret']).toBe('forward-secret-test');
+    });
+
+    it('returns 500 without forwarding when PAYMENT_WEBHOOK_SECRET is not set', async () => {
+        const saved = process.env.PAYMENT_WEBHOOK_SECRET;
+        delete process.env.PAYMENT_WEBHOOK_SECRET;
+        process.env.WEBHOOK_FORWARD_URL = 'https://myapp.com/webhooks';
+        mockConstructEvent.mockReturnValueOnce({
+            type: 'payment_intent.succeeded',
+            data: { object: { id: 'pi_nosecret', amount: 500, currency: 'usd', metadata: {} } },
+        });
+
+        try {
+            const res = await request(app)
+                .post('/webhooks/stripe')
+                .set('stripe-signature', 'valid-sig')
+                .send(Buffer.from('{}'));
+
+            expect(res.status).toBe(500);
+            expect(mockFetch).not.toHaveBeenCalled();
+        } finally {
+            process.env.PAYMENT_WEBHOOK_SECRET = saved;
+        }
+    });
+
+    it('returns 500 so Stripe retries when payment-webhook rejects the forward', async () => {
+        mockFetch.mockResolvedValueOnce({ ok: false, status: 401 });
+        process.env.WEBHOOK_FORWARD_URL = 'https://myapp.com/webhooks';
+        mockConstructEvent.mockReturnValueOnce({
+            type: 'payment_intent.succeeded',
+            data: { object: { id: 'pi_rejected', amount: 500, currency: 'usd', metadata: {} } },
+        });
+
+        const res = await request(app)
+            .post('/webhooks/stripe')
+            .set('stripe-signature', 'valid-sig')
+            .send(Buffer.from('{}'));
+
+        expect(res.status).toBe(500);
+        expect(res.body.error).toBe('Webhook handler error');
     });
 
     it('returns 200 and forwards a payment_intent.payment_failed event', async () => {
