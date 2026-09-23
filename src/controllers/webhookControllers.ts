@@ -6,11 +6,21 @@ const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY as string);
 const forwardEvent = async (payload: object): Promise<void> => {
     const url = process.env.WEBHOOK_FORWARD_URL;
     if (!url) return;
-    await fetch(url, {
+    // payment-webhook rechaza cualquier request sin este secreto (tiene
+    // verify_jwt = false, así que es su única autenticación).
+    const secret = process.env.PAYMENT_WEBHOOK_SECRET;
+    if (!secret) throw new Error('PAYMENT_WEBHOOK_SECRET is not set');
+
+    const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-webhook-secret': secret },
         body: JSON.stringify(payload),
     });
+    // Sin este chequeo un 401/500 de payment-webhook se perdía en silencio y
+    // se le respondía 200 a Stripe; así el handler responde 500 y Stripe reintenta.
+    if (!response.ok) {
+        throw new Error(`payment-webhook responded ${response.status}`);
+    }
 };
 
 export const handleStripeWebhook = async (req: Request, res: Response): Promise<void> => {
