@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { AuthMiddleware } from '../middleware/auth';
+import { AdminMiddleware } from '../middleware/admin';
+import { getPlatformBalance, getPlatformPayouts, createPlatformPayout } from '../controllers/platformControllers';
 import { createPayment, getPaymentStatus, createCheckoutSession, getCheckoutSessionStatus } from '../controllers/paymentControllers';
 import { createOrGetCustomer, listCustomerPaymentMethods, deleteCustomerPaymentMethod, createCustomerSession } from '../controllers/customerControllers';
 import { setupIntents } from '../controllers/setIntentControllers';
@@ -30,5 +32,10 @@ router.get('/accounts/:accountId/balance', AuthMiddleware, getOrganizerBalance);
 router.get('/accounts/:accountId/payouts', AuthMiddleware, getOrganizerPayouts);
 router.get('/accounts/:accountId/charges', AuthMiddleware, getOrganizerCharges);
 router.delete('/accounts/:accountId', AuthMiddleware, deleteOrganizerAccount);
+
+// Platform (cuenta principal de SPOT) — solo admins
+router.get('/platform/balance', AuthMiddleware, AdminMiddleware, getPlatformBalance);
+router.get('/platform/payouts', AuthMiddleware, AdminMiddleware, getPlatformPayouts);
+router.post('/platform/payouts', AuthMiddleware, AdminMiddleware, createPlatformPayout);
 
 export default router;

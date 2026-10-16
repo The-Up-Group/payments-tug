@@ -463,6 +463,8 @@ STRIPE_PUBLISHABLE_KEY=pk_test_...
 | JWT_SECRET_KEY | Secreto para firmar y verificar JWTs | Lo defines tú — debe ser el mismo que usa Supabase |
 | STRIPE_SECRET_KEY | Clave privada de Stripe | dashboard.stripe.com → Developers → API keys |
 | STRIPE_PUBLISHABLE_KEY | Clave pública de Stripe | Mismo lugar — la usa Flutter directamente |
+| SUPABASE_URL | URL del proyecto de Supabase (JWKS y chequeo de admin) | Supabase → Settings → API → Project URL |
+| SUPABASE_ANON_KEY | Llave pública (anon) de Supabase. La usa `AdminMiddleware` para llamar `rpc/is_admin` con el JWT del usuario en los endpoints `/payments/platform/*` | Supabase → Settings → API → anon public key |
 
 **Importante sobre JWT_SECRET_KEY y Supabase:**
 Supabase firma sus JWTs con el `JWT Secret` que puedes ver en tu proyecto de Supabase (Settings → API → JWT Secret). Para que este servicio valide los tokens de Supabase, el valor de `JWT_SECRET_KEY` en tu `.env` debe ser exactamente ese mismo string.
