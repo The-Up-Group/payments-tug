@@ -3,11 +3,15 @@ import express from 'express';
 import { handleStripeWebhook } from '../src/controllers/webhookControllers';
 
 const mockConstructEvent = jest.fn();
+const mockRetrieveIntent = jest.fn();
 
 jest.mock('stripe', () => {
     return jest.fn().mockImplementation(() => ({
         webhooks: {
             constructEvent: mockConstructEvent,
+        },
+        paymentIntents: {
+            retrieve: mockRetrieveIntent,
         },
     }));
 });
@@ -28,6 +32,7 @@ beforeAll(() => {
 
 beforeEach(() => {
     mockFetch.mockResolvedValue({ ok: true });
+    mockRetrieveIntent.mockResolvedValue({ latest_charge: null, transfer_data: null });
 });
 
 describe('handleStripeWebhook', () => {
@@ -141,6 +146,8 @@ describe('handleStripeWebhook', () => {
         const forwarded = JSON.parse(mockFetch.mock.calls[0][1].body);
         expect(forwarded.type).toBe('payment_intent.payment_failed');
         expect(forwarded.paymentIntentId).toBe('pi_456');
+        expect(forwarded).not.toHaveProperty('stripeFee');
+        expect(mockRetrieveIntent).not.toHaveBeenCalled();
     });
 
     it('returns 200 and does nothing for unrecognised event types', async () => {
@@ -171,5 +178,163 @@ describe('handleStripeWebhook', () => {
 
         expect(res.status).toBe(200);
         expect(mockFetch).not.toHaveBeenCalled();
+    });
+});
+
+describe('handleStripeWebhook — applicationFeeAmount forwarding', () => {
+    const succeededEvent = (applicationFee: number | null, metadata: Record<string, string>) => ({
+        type: 'payment_intent.succeeded',
+        data: {
+            object: {
+                id: 'pi_fee',
+                amount: 10000,
+                currency: 'mxn',
+                application_fee_amount: applicationFee,
+                metadata,
+            },
+        },
+    });
+
+    const sendWebhook = () =>
+        request(app)
+            .post('/webhooks/stripe')
+            .set('stripe-signature', 'valid-sig')
+            .send(Buffer.from('{}'));
+
+    beforeEach(() => {
+        process.env.WEBHOOK_FORWARD_URL = 'https://myapp.com/webhooks';
+    });
+
+    it('forwards the fee Stripe retained on Connect charges, ignoring metadata', async () => {
+        mockConstructEvent.mockReturnValueOnce(
+            succeededEvent(850, { appId: 'app_1', eventId: 'evt_1', applicationFeeAmount: '999' }),
+        );
+
+        const res = await sendWebhook();
+
+        expect(res.status).toBe(200);
+        const forwarded = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(forwarded.applicationFeeAmount).toBe(850);
+    });
+
+    it('falls back to metadata.applicationFeeAmount on platform charges', async () => {
+        mockConstructEvent.mockReturnValueOnce(
+            succeededEvent(null, { appId: 'app_1', eventId: 'evt_1', applicationFeeAmount: '850', platformCharge: 'true' }),
+        );
+
+        const res = await sendWebhook();
+
+        expect(res.status).toBe(200);
+        const forwarded = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(forwarded.applicationFeeAmount).toBe(850);
+    });
+
+    it('omits applicationFeeAmount when neither Stripe nor metadata has a fee', async () => {
+        mockConstructEvent.mockReturnValueOnce(
+            succeededEvent(null, { appId: 'app_1', eventId: 'evt_1' }),
+        );
+
+        const res = await sendWebhook();
+
+        expect(res.status).toBe(200);
+        const forwarded = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(forwarded).not.toHaveProperty('applicationFeeAmount');
+    });
+});
+
+describe('handleStripeWebhook — Stripe fee and transfer forwarding', () => {
+    const succeededEvent = {
+        type: 'payment_intent.succeeded',
+        data: {
+            object: {
+                id: 'pi_fin',
+                amount: 10000,
+                currency: 'mxn',
+                metadata: { appId: 'app_1', eventId: 'evt_1' },
+            },
+        },
+    };
+
+    const sendWebhook = () =>
+        request(app)
+            .post('/webhooks/stripe')
+            .set('stripe-signature', 'valid-sig')
+            .send(Buffer.from('{}'));
+
+    beforeEach(() => {
+        process.env.WEBHOOK_FORWARD_URL = 'https://myapp.com/webhooks';
+        mockConstructEvent.mockReturnValueOnce(succeededEvent);
+    });
+
+    it('forwards the Stripe fee and the amount transferred on Connect charges', async () => {
+        mockRetrieveIntent.mockResolvedValueOnce({
+            transfer_data: { destination: 'acct_1' },
+            latest_charge: {
+                balance_transaction: { id: 'txn_1', fee: 410 },
+                transfer: { id: 'tr_1', amount: 9150 },
+            },
+        });
+
+        const res = await sendWebhook();
+
+        expect(res.status).toBe(200);
+        expect(mockRetrieveIntent).toHaveBeenCalledWith('pi_fin', {
+            expand: ['latest_charge.balance_transaction', 'latest_charge.transfer'],
+        });
+        const forwarded = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(forwarded.stripeFee).toBe(410);
+        expect(forwarded.balanceTransactionId).toBe('txn_1');
+        expect(forwarded.transferAmount).toBe(9150);
+    });
+
+    it('forwards transferAmount 0 on platform charges', async () => {
+        mockRetrieveIntent.mockResolvedValueOnce({
+            transfer_data: null,
+            latest_charge: {
+                balance_transaction: { id: 'txn_2', fee: 410 },
+                transfer: null,
+            },
+        });
+
+        const res = await sendWebhook();
+
+        expect(res.status).toBe(200);
+        const forwarded = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(forwarded.stripeFee).toBe(410);
+        expect(forwarded.transferAmount).toBe(0);
+    });
+
+    it('omits transferAmount when a Connect transfer is not available yet', async () => {
+        mockRetrieveIntent.mockResolvedValueOnce({
+            transfer_data: { destination: 'acct_1' },
+            latest_charge: {
+                balance_transaction: { id: 'txn_3', fee: 410 },
+                transfer: null,
+            },
+        });
+
+        const res = await sendWebhook();
+
+        expect(res.status).toBe(200);
+        const forwarded = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(forwarded.stripeFee).toBe(410);
+        expect(forwarded).not.toHaveProperty('transferAmount');
+    });
+
+    it('still forwards the payment when reading the fee from Stripe fails', async () => {
+        mockRetrieveIntent.mockRejectedValueOnce(new Error('Stripe down'));
+        const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        try {
+            const res = await sendWebhook();
+
+            expect(res.status).toBe(200);
+            const forwarded = JSON.parse(mockFetch.mock.calls[0][1].body);
+            expect(forwarded.paymentIntentId).toBe('pi_fin');
+            expect(forwarded).not.toHaveProperty('stripeFee');
+            expect(forwarded).not.toHaveProperty('transferAmount');
+        } finally {
+            errorSpy.mockRestore();
+        }
     });
 });

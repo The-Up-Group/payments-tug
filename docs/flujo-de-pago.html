@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flujo de pago</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&display=swap">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #F3F5F8;
+    --surface: #FFFFFF;
+    --ink: #151922;
+    --muted: #5A6373;
+    --line: #CDD3DC;
+    --key: #4338CA;
+    --async: #B45309;
+    --ok: #15803D;
+    --code-bg: #E9ECF2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0F1218; --surface: #171B23; --ink: #E5E8EE; --muted: #98A1AF; --line: #2B323D;
+      --key: #9097FF; --async: #F0A54A; --ok: #4ADE80; --code-bg: #222834;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0F1218; --surface: #171B23; --ink: #E5E8EE; --muted: #98A1AF; --line: #2B323D;
+    --key: #9097FF; --async: #F0A54A; --ok: #4ADE80; --code-bg: #222834;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.6 "IBM Plex Sans", system-ui, sans-serif;
+    padding-inline: 20px; padding-block: 40px 64px;
+  }
+  main { max-width: 1040px; margin: 0 auto; display: grid; gap: 48px; }
+  .prose { max-width: 70ch; }
+  h1, h2 { font-family: "Bricolage Grotesque", "IBM Plex Sans", system-ui, sans-serif; text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+  h1 { font-size: clamp(28px, 4vw, 40px); line-height: 1.1; }
+  h2 { font-size: 22px; margin-bottom: 8px; }
+  h3 { font-size: 15px; margin: 0 0 4px; }
+  p { margin: 8px 0 0; }
+  a { color: var(--key); text-underline-offset: 3px; }
+  .eyebrow { font: 500 12px/1 "IBM Plex Mono", ui-monospace, monospace; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+  code { font: 0.88em "IBM Plex Mono", ui-monospace, monospace; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+  pre { margin: 12px 0 0; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; overflow-x: auto; }
+  pre code { background: none; padding: 0; font-size: 13.5px; overflow-wrap: normal; }
+  .note { border-left: 3px solid var(--async); padding: 4px 0 4px 14px; margin-top: 16px; max-width: 80ch; font-size: 14px; }
+  .note strong { color: var(--async); }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px 32px; margin-top: 12px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .card p { margin: 0; color: var(--muted); font-size: 14px; }
+  .card .why { margin-top: 8px; font-size: 13.5px; color: var(--ink); }
+  .tag { display: inline-block; font: 500 11px/1 "IBM Plex Mono", ui-monospace, monospace; letter-spacing: 0.04em; padding: 4px 7px; border-radius: 4px; margin-bottom: 10px; border: 1px solid currentColor; }
+  .tag.done { color: var(--ok); }
+  .tag.todo { color: var(--muted); }
+  .tag.key { color: var(--key); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-weight: 600; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .tbl { overflow-x: auto; }
+  ol.steps { list-style: none; counter-reset: s; padding: 0; margin: 12px 0 0; display: grid; gap: 12px; }
+  ol.steps > li { counter-increment: s; display: grid; grid-template-columns: 32px 1fr; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  ol.steps > li::before { content: counter(s); font: 600 14px/28px "IBM Plex Mono", ui-monospace, monospace; width: 28px; height: 28px; text-align: center; border-radius: 50%; background: var(--code-bg); color: var(--key); }
+  ol.steps .who { font: 500 11px/1 "IBM Plex Mono", ui-monospace, monospace; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  ol.steps p { margin: 4px 0 0; font-size: 14px; }
+  .split { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 8px; }
+  .split > div { border-radius: 8px; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line); font-size: 13.5px; }
+  .split h4 { margin: 0 0 4px; font-size: 13px; }
+  .money { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<main>
+  <header class="prose">
+    <div class="eyebrow">payments-tug · stripe · supabase</div>
+    <h1>Flujo de pago</h1>
+    <p>Cómo se cobra un boleto de paga en SPOT, desde que el usuario presiona "Pagar" hasta que recibe su QR. Hay dos tipos de cobro: <strong>Connect</strong>, para eventos de organizadores con cuenta de Stripe, y <strong>de plataforma</strong>, para eventos propios de SPOT Events, que no tienen cuenta Connect y cuyo dinero es todo de SPOT.</p>
+  </header>
+
+  <section id="tipos">
+    <h2>Los dos tipos de cobro</h2>
+    <p class="prose">El único dato que decide el tipo es si Flutter manda <code>destinationAccountId</code> (la cuenta Connect del organizador) a payments-tug. Todo lo demás del flujo es igual.</p>
+    <div class="grid2">
+      <div class="card">
+        <span class="tag key">CONNECT · CON destinationAccountId</span>
+        <h3>Evento de un organizador</h3>
+        <p>Stripe cobra en la cuenta de SPOT, transfiere el dinero a la cuenta Connect del organizador y retiene la comisión para SPOT. A Stripe se le manda <code>transfer_data.destination</code> y <code>application_fee_amount</code>.</p>
+        <p class="why">El organizador recibe el precio de sus boletos y SPOT la comisión, separados automáticamente por Stripe.</p>
+      </div>
+      <div class="card">
+        <span class="tag done">PLATAFORMA · SIN destinationAccountId</span>
+        <h3>Evento de SPOT Events</h3>
+        <p>Cargo normal: el monto completo se queda en la cuenta de SPOT. <strong>No</strong> se manda <code>transfer_data</code> ni <code>application_fee_amount</code>, porque Stripe rechaza una comisión cuando no hay a quién transferir. El metadata lleva <code>platformCharge: "true"</code>.</p>
+        <p class="why">No hay nada que repartir: el precio y la comisión son de SPOT.</p>
+      </div>
+    </div>
+    <p class="note"><strong>La comisión es igual en los dos casos:</strong> Flutter siempre la calcula y la manda (<code>applicationFeeAmount</code>), y payments-tug siempre la valida y la copia a <code>metadata.applicationFeeAmount</code>. Lo único que cambia es si se le pasa a Stripe para que la retenga.</p>
+  </section>
+
+  <section id="ejemplo">
+    <h2>Ejemplo con números</h2>
+    <p class="prose">2 boletos de $500 MXN, con comisión del evento (<code>app_commission_fee</code>) de 8.5%. Todo viaja en <strong>centavos enteros</strong>. La comisión se suma al precio: la paga el comprador.</p>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Concepto</th><th>Valor</th><th>Connect</th><th>Plataforma</th></tr></thead>
+        <tbody>
+          <tr><td>Precio × cantidad</td><td class="money">100000</td><td>Va al organizador</td><td>Va a SPOT</td></tr>
+          <tr><td>Comisión (8.5%) → <code>applicationFeeAmount</code></td><td class="money">8500</td><td>Stripe la retiene para SPOT</td><td>Va a SPOT (ya incluida en el cargo)</td></tr>
+          <tr><td>Total cobrado → <code>amount</code></td><td class="money">108500</td><td>Organizador: <span class="money">100000</span> · SPOT: <span class="money">8500</span></td><td>SPOT: <span class="money">108500</span></td></tr>
+          <tr><td><code>payments.platform_fee</code> guardado</td><td></td><td class="money">8500 (de Stripe)</td><td class="money">8500 (del metadata)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="comision-stripe">
+    <h2>Lo que se queda Stripe y lo que le queda a SPOT</h2>
+    <p class="prose">Stripe cobra su tarifa de procesamiento <strong>a la cuenta de SPOT</strong> en los dos tipos de cobro (en Connect con destination charges, la plataforma paga el procesamiento, no el organizador). Para poder separar lo que se queda Stripe de lo que le queda a SPOT, el webhook guarda por cada pago lo que Stripe reporta del cobro:</p>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Columna en <code>payments</code></th><th>Qué es</th><th>De dónde sale</th></tr></thead>
+        <tbody>
+          <tr><td><code>stripe_fee</code></td><td>Tarifa de procesamiento que cobró Stripe</td><td><code>latest_charge.balance_transaction.fee</code></td></tr>
+          <tr><td><code>transfer_amount</code></td><td>Lo que se transfirió al organizador. <code>0</code> en cobros de plataforma</td><td><code>latest_charge.transfer.amount</code></td></tr>
+          <tr><td><code>stripe_balance_transaction_id</code></td><td>El movimiento en Stripe, para conciliar</td><td><code>latest_charge.balance_transaction.id</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="prose">Con esas columnas, para cualquier pago:</p>
+    <pre><code>entra a SPOT    = amount − transfer_amount
+neto de SPOT    = amount − transfer_amount − stripe_fee</code></pre>
+    <p class="prose">Mismo ejemplo de arriba, suponiendo una tarifa de Stripe de <span class="money">4879</span> (ilustrativa: 3.6% + $3 MXN + IVA sobre <span class="money">108500</span>):</p>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Concepto</th><th>Connect</th><th>Plataforma</th></tr></thead>
+        <tbody>
+          <tr><td><code>amount</code></td><td class="money">108500</td><td class="money">108500</td></tr>
+          <tr><td><code>transfer_amount</code></td><td class="money">100000</td><td class="money">0</td></tr>
+          <tr><td>Entra a SPOT</td><td class="money">8500</td><td class="money">108500</td></tr>
+          <tr><td><code>stripe_fee</code></td><td class="money">4879</td><td class="money">4879</td></tr>
+          <tr><td><strong>Neto de SPOT</strong></td><td class="money">3621</td><td class="money">103621</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note"><strong>Boletos baratos en Connect:</strong> la tarifa fija de Stripe sale de la comisión de SPOT. En boletos de bajo precio el neto de SPOT puede ser muy pequeño o incluso negativo.</p>
+    <p class="note"><strong>¿Por qué no usar <code>platform_fee</code> o el organizador del evento?</strong> En cobros de plataforma <code>platform_fee</code> guarda el 8.5%, no el monto completo que entró. Y un admin puede cambiar el organizador de un evento después de la venta. <code>transfer_amount</code> es lo que Stripe realmente transfirió y no cambia.</p>
+  </section>
+
+  <section id="pasos">
+    <h2>Paso a paso</h2>
+    <ol class="steps">
+      <li>
+        <div>
+          <div class="who">Flutter · event_registration_screen</div>
+          <h3>El usuario elige un boleto de paga</h3>
+          <p>Si el usuario no tiene sesión, <code>PaymentScreen</code> crea una cuenta invitado (sesión anónima) para tener un <code>userId</code>. Antes de cobrar se aparta el lugar con la RPC <code>create_hold</code> (15 min), para no cobrar si ya no hay cupo.</p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <div class="who">Flutter → payments-tug · POST /payments/customers</div>
+          <h3>Cliente de Stripe</h3>
+          <p><code>findOrCreateCustomer()</code> obtiene o crea el <code>cus_…</code> del comprador (permite tarjetas guardadas).</p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <div class="who">Flutter · payment_screen._handlePay</div>
+          <h3>Calcular montos</h3>
+          <p><code>applicationFeeAmount</code> = precio × cantidad × comisión del evento; <code>amount</code> = precio × cantidad + comisión.</p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <div class="who">Flutter → payments-tug</div>
+          <h3>Crear el cobro</h3>
+          <p>Móvil: <code>POST /payments</code> (<code>createPayment</code>) → PaymentIntent para el PaymentSheet. Web: <code>POST /payments/checkout-sessions</code> (<code>createCheckoutSession</code>) → Checkout embebido.</p>
+          <div class="split">
+            <div><h4>Connect</h4><code>transfer_data.destination</code> + <code>application_fee_amount</code>; metadata con <code>applicationFeeAmount</code>.</div>
+            <div><h4>Plataforma</h4>Sin <code>transfer_data</code> ni <code>application_fee_amount</code>; metadata con <code>applicationFeeAmount</code> + <code>platformCharge: "true"</code>.</div>
+          </div>
+          <p>El metadata también lleva <code>appId</code>, <code>eventId</code>, <code>userId</code>, <code>ticketTypeId</code>, <code>quantity</code> y, si es invitado, <code>guestEmail</code>: es lo que el webhook usa para crear el pago y los boletos.</p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <div class="who">Flutter ↔ Stripe</div>
+          <h3>El comprador paga</h3>
+          <p>Móvil: <code>initPaymentSheet</code> + <code>presentPaymentSheet</code>. Web: Checkout embebido y, al terminar, <code>GET /payments/checkout-sessions/{id}</code> para obtener el <code>paymentIntentId</code>. La app <strong>no</strong> inserta nada en <code>payments</code> ni en <code>event_bookings</code>.</p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <div class="who">Stripe → payments-tug · POST /webhooks/stripe</div>
+          <h3>Stripe avisa que se cobró</h3>
+          <p><code>handleStripeWebhook</code> verifica la firma y reenvía el evento a <code>payment-webhook</code> (Supabase) con el secreto <code>x-webhook-secret</code>. La comisión que reenvía:</p>
+          <div class="split">
+            <div><h4>Connect</h4><code>intent.application_fee_amount</code>: lo que Stripe realmente retuvo.</div>
+            <div><h4>Plataforma</h4><code>application_fee_amount</code> es null → usa <code>Number(metadata.applicationFeeAmount)</code>.</div>
+          </div>
+          <p>Si ninguno es un número válido (pagos antiguos u otros sistemas), el campo no se manda.</p>
+          <p>Además consulta el PaymentIntent con <code>expand: ['latest_charge.balance_transaction', 'latest_charge.transfer']</code> y agrega <code>stripeFee</code>, <code>balanceTransactionId</code> y <code>transferAmount</code> (<code>0</code> si no hay <code>transfer_data</code>). Es best-effort: si Stripe falla se registra el error y el evento se reenvía sin esos campos, para que nunca se bloqueen los boletos de alguien que ya pagó.</p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <div class="who">Supabase · payment-webhook (service_role)</div>
+          <h3>Pago, boletos y correo</h3>
+          <p>Crea la fila de <code>payments</code> (<code>platform_fee = applicationFeeAmount ?? 0</code>, más <code>stripe_fee</code>, <code>transfer_amount</code> y <code>stripe_balance_transaction_id</code> solo si vienen, para no pisar con null un valor ya guardado en un reintento), confirma el hold con <code>confirm_payment_tickets</code> (si ya no hay lugar, marca el pago <code>needs_refund</code>), inserta un <code>event_bookings</code> por persona con <code>purchase_type = 'paid'</code> e invoca <code>send-tickets</code> para mandar cada QR por correo.</p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <div class="who">Flutter · TicketLoadingScreen</div>
+          <h3>El usuario ve su boleto</h3>
+          <p>La app reintenta leer sus bookings hasta que aparecen (el webhook es asíncrono) y muestra el QR.</p>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <section id="estado">
+    <h2>Estado de la implementación</h2>
+    <div class="grid2">
+      <div class="card">
+        <span class="tag done">HECHO · payments-tug</span>
+        <h3><code>destinationAccountId</code> opcional</h3>
+        <p><code>createPayment</code> y <code>createCheckoutSession</code> aceptan cargos de plataforma; <code>applicationFeeAmount</code> sigue obligatorio. El webhook toma la comisión del metadata cuando Stripe no la tiene.</p>
+        <p class="why">Retrocompatible: quien ya manda <code>destinationAccountId</code> no nota diferencia.</p>
+      </div>
+      <div class="card">
+        <span class="tag done">HECHO · Flutter (fase 3)</span>
+        <h3>Permitir comprar eventos de SPOT Events</h3>
+        <p><code>event_registration_screen.dart</code> solo corta el pago si el organizador no tiene <code>stripe_account_id</code> y no es de plataforma (<code>is_platform</code>). <code>destinationAccountId</code> es opcional en <code>createPayment</code> y <code>createCheckoutSession</code>.</p>
+        <p class="why">Detalle del lado de la app en <code>events/docs/flujo-de-pago.html</code>.</p>
+      </div>
+      <div class="card">
+        <span class="tag done">HECHO · payments-tug + payment-webhook</span>
+        <h3>Comisión de Stripe por pago</h3>
+        <p>El webhook reenvía <code>stripeFee</code>, <code>transferAmount</code> y <code>balanceTransactionId</code>; <code>payment-webhook</code> los guarda en <code>payments</code> (migración <code>20261015000000_payments_stripe_fee.sql</code>). Los usa el panel de admin para ventas, comisión de Stripe y neto de SPOT.</p>
+        <p class="why">Orden de despliegue: primero la migración, luego <code>payment-webhook</code>. Al revés, el insert de <code>payments</code> falla por columnas inexistentes y no se crean boletos. payments-tug puede ir en cualquier orden.</p>
+      </div>
+      <div class="card">
+        <span class="tag done">HECHO · script (correr una vez)</span>
+        <h3>Llenar pagos anteriores</h3>
+        <p>Los pagos previos a este cambio tienen <code>stripe_fee</code> y <code>transfer_amount</code> en <code>null</code>. <code>npm run backfill:stripe-fees</code> los lista sin escribir; con <code>-- --apply</code> los actualiza. Usa la misma lógica que el webhook (<code>src/utils/chargeFinancials.ts</code>) e incluye pagos <code>needs_refund</code>, porque sí se cobraron.</p>
+        <p class="why">Necesita <code>STRIPE_SECRET_KEY</code>, <code>SUPABASE_URL</code> y <code>SUPABASE_SERVICE_ROLE_KEY</code> en el <code>.env</code> local. La service role key no va en el servidor. Correrlo después de aplicar la migración; se puede repetir sin riesgo.</p>
+      </div>
+    </div>
+    <p class="note"><strong>Riesgo conocido (previo a este cambio):</strong> payments-tug confía en el monto, la comisión y el destino que manda el cliente. Omitir <code>destinationAccountId</code> en un evento de organizador mandaría el dinero a SPOT en vez de al organizador. No beneficia al comprador, pero conviene validar montos y destino contra Supabase en el servidor más adelante.</p>
+  </section>
+
+  <section id="archivos">
+    <h2>Archivos</h2>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Parte</th><th>Archivo</th></tr></thead>
+        <tbody>
+          <tr><td>Crear cobro (móvil y web)</td><td><code>payments-tug/src/controllers/paymentControllers.ts</code></td></tr>
+          <tr><td>Tipos del request</td><td><code>payments-tug/src/types/paymentTypes.ts</code></td></tr>
+          <tr><td>Webhook de Stripe y reenvío</td><td><code>payments-tug/src/controllers/webhookControllers.ts</code></td></tr>
+          <tr><td>Comisión de Stripe y transferencia de un cobro</td><td><code>payments-tug/src/utils/chargeFinancials.ts</code></td></tr>
+          <tr><td>Backfill de pagos anteriores</td><td><code>payments-tug/scripts/backfillStripeFees.ts</code> → <code>src/utils/backfillStripeFees.ts</code></td></tr>
+          <tr><td>Tests</td><td><code>payments-tug/__tests__/paymentControllers.test.ts</code>, <code>webhookControllers.test.ts</code>, <code>backfillStripeFees.test.ts</code></td></tr>
+          <tr><td>Swagger</td><td><code>payments-tug/openapi.yaml</code> (servido en <code>/docs</code>)</td></tr>
+          <tr><td>Pantalla de pago</td><td><code>events/lib/presentation/screens/payment_screen/payment_screen.dart</code></td></tr>
+          <tr><td>Pago, boletos y correo</td><td><code>events/supabase/functions/payment-webhook/index.ts</code></td></tr>
+          <tr><td>Holds y cupo</td><td><code>events/supabase/migrations/20261005224516_ticket_packs.sql</code></td></tr>
+          <tr><td>Columnas de comisión de Stripe</td><td><code>events/supabase/migrations/20261015000000_payments_stripe_fee.sql</code></td></tr>
+          <tr><td>Referencia REST (incluye payload reenviado)</td><td><code>API.md</code> · schema <code>WebhookForwardPayload</code> en <code>openapi.yaml</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+</body>
+</html>

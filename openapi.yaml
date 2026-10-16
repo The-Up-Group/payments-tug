@@ -23,6 +23,46 @@ components:
         detail:
           type: string
           description: Only present in non-production environments
+    WebhookForwardPayload:
+      type: object
+      description: Body that `POST /webhooks/stripe` forwards to the payment-webhook edge function (`WEBHOOK_FORWARD_URL`), authenticated with header `x-webhook-secret`. All amounts are integer cents.
+      required: [type, paymentIntentId, metadata]
+      properties:
+        type:
+          type: string
+          enum: [payment_intent.succeeded, payment_intent.payment_failed]
+        paymentIntentId:
+          type: string
+          example: pi_123
+        amount:
+          type: integer
+          description: Only on `payment_intent.succeeded`
+          example: 108500
+        currency:
+          type: string
+          description: Only on `payment_intent.succeeded`
+          example: mxn
+        applicationFeeAmount:
+          type: integer
+          description: SPOT commission. `intent.application_fee_amount` on Connect charges, `metadata.applicationFeeAmount` on platform charges. Omitted if neither is valid. Stored in `payments.platform_fee`.
+          example: 8500
+        stripeFee:
+          type: integer
+          description: Stripe processing fee (`balance_transaction.fee`). Omitted if it could not be read. Stored in `payments.stripe_fee`.
+          example: 4100
+        transferAmount:
+          type: integer
+          description: Amount transferred to the organizer (`charge.transfer.amount`) on Connect charges, `0` on platform charges. Omitted if it could not be read or the transfer is not available yet. Stored in `payments.transfer_amount`.
+          example: 100000
+        balanceTransactionId:
+          type: string
+          description: Stripe balance transaction id. Stored in `payments.stripe_balance_transaction_id`.
+          example: txn_123
+        metadata:
+          type: object
+          description: The PaymentIntent metadata as sent by createPayment / createCheckoutSession
+          additionalProperties:
+            type: string
 
 paths:
   /health:
@@ -44,7 +84,13 @@ paths:
   /payments:
     post:
       summary: Create a payment intent
-      description: Creates a Stripe PaymentIntent with Connect transfer to the organizer. If paymentMethodId is provided the intent is confirmed immediately.
+      description: |
+        Creates a Stripe PaymentIntent. If paymentMethodId is provided the intent is confirmed immediately.
+
+        - **With destinationAccountId (Connect / destination charge):** Stripe transfers `amount - applicationFeeAmount` to the organizer's Connect account and keeps `applicationFeeAmount` for the platform.
+        - **Without destinationAccountId (platform charge):** the full amount stays in the platform account. `transfer_data` and `application_fee_amount` are NOT sent to Stripe (Stripe rejects a fee without a destination). The metadata gets `platformCharge: "true"`.
+
+        In both cases `applicationFeeAmount` is required, validated, and copied to `metadata.applicationFeeAmount` (string) so the webhook can report it for platform charges.
       requestBody:
         required: true
         content:
@@ -55,7 +101,6 @@ paths:
                 - amount
                 - currency
                 - customerId
-                - destinationAccountId
                 - applicationFeeAmount
                 - appId
                 - eventId
@@ -75,11 +120,11 @@ paths:
                   example: cus_xxx
                 destinationAccountId:
                   type: string
-                  description: Stripe Connect account ID of the organizer
+                  description: Optional. Stripe Connect account ID of the organizer. Omit it to create a platform charge (e.g. events owned by the platform organizer).
                   example: acct_xxx
                 applicationFeeAmount:
                   type: integer
-                  description: Platform fee in cents, computed by the client from the organizer's commission rate. Must be >= 0 and <= amount.
+                  description: Platform fee in cents, computed by the client from the event's commission rate. Required for both Connect and platform charges. Must be >= 0 and <= amount. Only sent to Stripe as application_fee_amount when destinationAccountId is present.
                   example: 5000
                 appId:
                   type: string
@@ -172,7 +217,10 @@ paths:
   /payments/checkout-sessions:
     post:
       summary: Create an embedded Checkout Session
-      description: Web-only. Creates a Stripe Checkout Session (ui_mode `embedded_page`) with Connect transfer to the organizer, for mounting inline in Flutter web via Stripe.js embedded checkout. The client_secret returned here is a Checkout Session client secret, distinct from the PaymentIntent client secret used by POST /payments.
+      description: |
+        Web-only. Creates a Stripe Checkout Session (ui_mode `embedded_page`) for mounting inline in Flutter web via Stripe.js embedded checkout. The client_secret returned here is a Checkout Session client secret, distinct from the PaymentIntent client secret used by POST /payments.
+
+        Same Connect / platform rules as POST /payments: with destinationAccountId it is a destination charge; without it, `payment_intent_data` carries no `transfer_data` / `application_fee_amount` and the full amount stays in the platform account. The same metadata (including `applicationFeeAmount` and, for platform charges, `platformCharge: "true"`) is set on both the PaymentIntent and the Checkout Session.
       requestBody:
         required: true
         content:
@@ -183,7 +231,6 @@ paths:
                 - amount
                 - currency
                 - customerId
-                - destinationAccountId
                 - applicationFeeAmount
                 - appId
                 - eventId
@@ -204,11 +251,11 @@ paths:
                   example: cus_xxx
                 destinationAccountId:
                   type: string
-                  description: Stripe Connect account ID of the organizer
+                  description: Optional. Stripe Connect account ID of the organizer. Omit it to create a platform charge (e.g. events owned by the platform organizer).
                   example: acct_xxx
                 applicationFeeAmount:
                   type: integer
-                  description: Platform fee in cents, computed by the client from the organizer's commission rate. Must be >= 0 and <= amount.
+                  description: Platform fee in cents, computed by the client from the event's commission rate. Required for both Connect and platform charges. Must be >= 0 and <= amount. Only sent to Stripe as application_fee_amount when destinationAccountId is present.
                   example: 5000
                 appId:
                   type: string
@@ -842,7 +889,19 @@ paths:
   /webhooks/stripe:
     post:
       summary: Stripe webhook receiver
-      description: Receives events from Stripe. Verifies signature and forwards to SPOT backend. Must NOT include Authorization header.
+      description: |
+        Receives events from Stripe. Verifies signature and forwards to SPOT backend. Must NOT include Authorization header.
+
+        For `payment_intent.succeeded` the forwarded `applicationFeeAmount` is `intent.application_fee_amount` (fee Stripe retained on Connect charges); when that is null (platform charges) it falls back to `Number(intent.metadata.applicationFeeAmount)`. If neither is a valid number the field is omitted.
+
+        For `payment_intent.succeeded` the handler also retrieves the PaymentIntent with `expand: ['latest_charge.balance_transaction', 'latest_charge.transfer']` and adds to the forwarded payload (stored by payment-webhook in `payments.stripe_fee`, `payments.transfer_amount`, `payments.stripe_balance_transaction_id`):
+        - `stripeFee`: `balance_transaction.fee`, the processing fee Stripe charged SPOT (integer cents).
+        - `balanceTransactionId`: `balance_transaction.id`.
+        - `transferAmount`: `charge.transfer.amount` on Connect charges (amount sent to the organizer); `0` on platform charges (no `transfer_data`). Omitted on a Connect charge whose transfer is not available yet.
+
+        This lookup is best-effort: if Stripe fails, the error is logged and the payment is still forwarded without these fields (bookings are never blocked by it).
+
+        The forwarded body (POST to `WEBHOOK_FORWARD_URL` with header `x-webhook-secret`) is documented in the `WebhookForwardPayload` schema.
       security: []
       requestBody:
         required: true
@@ -869,6 +928,12 @@ paths:
                     example: true
         '400':
           description: Webhook signature verification failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Forwarding to payment-webhook failed (missing `PAYMENT_WEBHOOK_SECRET` or non-2xx from the edge function); Stripe retries the event
           content:
             application/json:
               schema:

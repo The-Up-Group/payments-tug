@@ -2,7 +2,7 @@ export interface PaymentRequest {
     amount: number;
     currency: string;
     customerId: string;
-    destinationAccountId: string;
+    destinationAccountId?: string;
     applicationFeeAmount: number;
     appId: string;
     eventId: string;
@@ -32,7 +32,7 @@ export interface CheckoutSessionRequest {
     amount: number;
     currency: string;
     customerId: string;
-    destinationAccountId: string;
+    destinationAccountId?: string;
     applicationFeeAmount: number;
     appId: string;
     eventId: string;

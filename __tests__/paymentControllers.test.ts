@@ -115,6 +115,44 @@ describe('createPayment', () => {
         expect(callArgs.application_fee_amount).toBe(100);
     });
 
+    it('creates a Connect charge with the fee copied into metadata and no platformCharge flag', async () => {
+        mockPaymentIntentsCreate.mockResolvedValueOnce({ id: 'pi_conn', client_secret: 'secret' });
+
+        await request(app).post('/payments').send(validBody);
+
+        const callArgs = mockPaymentIntentsCreate.mock.calls[0][0];
+        expect(callArgs.transfer_data.destination).toBe('acct_123');
+        expect(callArgs.application_fee_amount).toBe(100);
+        expect(callArgs.metadata.applicationFeeAmount).toBe('100');
+        expect(callArgs.metadata.platformCharge).toBeUndefined();
+    });
+
+    it('creates a platform charge without transfer_data or application_fee_amount when destinationAccountId is omitted', async () => {
+        mockPaymentIntentsCreate.mockResolvedValueOnce({ id: 'pi_plat', client_secret: 'secret' });
+        const { destinationAccountId, ...rest } = validBody;
+
+        const res = await request(app).post('/payments').send(rest);
+
+        expect(res.status).toBe(201);
+        expect(res.body.platformFee).toBe(100);
+
+        const callArgs = mockPaymentIntentsCreate.mock.calls[0][0];
+        expect(callArgs.transfer_data).toBeUndefined();
+        expect(callArgs.application_fee_amount).toBeUndefined();
+        expect(callArgs.metadata.platformCharge).toBe('true');
+        expect(callArgs.metadata.applicationFeeAmount).toBe('100');
+    });
+
+    it('still requires applicationFeeAmount on platform charges', async () => {
+        const { destinationAccountId, applicationFeeAmount, ...rest } = validBody;
+
+        const res = await request(app).post('/payments').send(rest);
+
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe('Invalid applicationFeeAmount');
+        expect(mockPaymentIntentsCreate).not.toHaveBeenCalled();
+    });
+
     it('passes through a fractional-commission fee unchanged (rounded)', async () => {
         mockPaymentIntentsCreate.mockResolvedValueOnce({ id: 'pi_456', client_secret: 'secret' });
 
@@ -249,6 +287,35 @@ describe('createCheckoutSession', () => {
         expect(callArgs.payment_intent_data.transfer_data.destination).toBe('acct_123');
         expect(callArgs.line_items[0].price_data.unit_amount).toBe(1000);
         expect(callArgs.line_items[0].price_data.currency).toBe('usd');
+    });
+
+    it('creates a Connect session with the fee copied into both metadata objects', async () => {
+        mockCheckoutSessionsCreate.mockResolvedValueOnce({ id: 'cs_conn', client_secret: 'secret' });
+
+        await request(app).post('/payments/checkout-sessions').send(validBody);
+
+        const callArgs = mockCheckoutSessionsCreate.mock.calls[0][0];
+        expect(callArgs.payment_intent_data.transfer_data.destination).toBe('acct_123');
+        expect(callArgs.payment_intent_data.metadata.applicationFeeAmount).toBe('100');
+        expect(callArgs.payment_intent_data.metadata.platformCharge).toBeUndefined();
+        expect(callArgs.metadata).toEqual(callArgs.payment_intent_data.metadata);
+    });
+
+    it('creates a platform session without transfer_data or application_fee_amount when destinationAccountId is omitted', async () => {
+        mockCheckoutSessionsCreate.mockResolvedValueOnce({ id: 'cs_plat', client_secret: 'secret' });
+        const { destinationAccountId, ...rest } = validBody;
+
+        const res = await request(app).post('/payments/checkout-sessions').send(rest);
+
+        expect(res.status).toBe(201);
+        expect(res.body.platformFee).toBe(100);
+
+        const callArgs = mockCheckoutSessionsCreate.mock.calls[0][0];
+        expect(callArgs.payment_intent_data.transfer_data).toBeUndefined();
+        expect(callArgs.payment_intent_data.application_fee_amount).toBeUndefined();
+        expect(callArgs.payment_intent_data.metadata.platformCharge).toBe('true');
+        expect(callArgs.payment_intent_data.metadata.applicationFeeAmount).toBe('100');
+        expect(callArgs.metadata).toEqual(callArgs.payment_intent_data.metadata);
     });
 
     it('passes through a fractional-commission fee unchanged (rounded)', async () => {
