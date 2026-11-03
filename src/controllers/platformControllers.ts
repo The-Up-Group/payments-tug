@@ -5,6 +5,7 @@ import {
     PlatformBalanceResponse,
     PlatformPayout,
     PlatformPayoutsResponse,
+    PlatformSalesSummaryResponse,
 } from '../types/platformTypes';
 
 // Endpoints de la cuenta principal de Stripe (la de SPOT, sin header
@@ -68,6 +69,82 @@ export const getPlatformPayouts = async (req: Request, res: Response): Promise<v
         res.status(200).json(response);
     } catch (err) {
         errorResponse(res, 500, 'Failed to retrieve platform payouts', err);
+    }
+};
+
+const parseUnixSeconds = (value: unknown): number | undefined | null => {
+    if (value === undefined || value === '') return undefined;
+    const n = Number(value);
+    return Number.isInteger(n) && n >= 0 ? n : null;
+};
+
+export const getPlatformSalesSummary = async (req: Request, res: Response): Promise<void> => {
+    const appId = req.query.appId as string | undefined;
+    const eventId = req.query.eventId as string | undefined;
+    const from = parseUnixSeconds(req.query.from);
+    const to = parseUnixSeconds(req.query.to);
+
+    if (!appId) {
+        res.status(400).json({ error: 'appId is required' });
+        return;
+    }
+    if (from === null || to === null) {
+        res.status(400).json({ error: 'from and to must be unix timestamps in seconds' });
+        return;
+    }
+
+    const summary: PlatformSalesSummaryResponse = {
+        currency: DEFAULT_CURRENCY,
+        grossSales: 0,
+        paidToOrganizers: 0,
+        spotGross: 0,
+        stripeFees: 0,
+        spotNet: 0,
+        paymentsCount: 0,
+        pendingFeeCharges: 0,
+    };
+
+    try {
+        const charges = getStripe().charges.list({
+            limit: 100,
+            expand: ['data.balance_transaction', 'data.payment_intent'],
+            ...((from !== undefined || to !== undefined) && {
+                created: {
+                    ...(from !== undefined && { gte: from }),
+                    ...(to !== undefined && { lt: to }),
+                },
+            }),
+        });
+
+        for await (const charge of charges) {
+            if (charge.status !== 'succeeded') continue;
+            const intent = charge.payment_intent;
+            const metadata = intent && typeof intent !== 'string' ? intent.metadata : charge.metadata;
+            if (metadata?.appId !== appId) continue;
+            if (eventId && metadata?.eventId !== eventId) continue;
+
+            const connect = !!charge.transfer_data;
+            const applicationFee = charge.application_fee_amount ?? 0;
+            const spotIn = connect ? applicationFee : charge.amount;
+
+            summary.currency = charge.currency;
+            summary.paymentsCount++;
+            summary.grossSales += charge.amount;
+            summary.paidToOrganizers += connect ? charge.amount - applicationFee : 0;
+            summary.spotGross += spotIn;
+
+            const balanceTx = charge.balance_transaction;
+            if (!balanceTx || typeof balanceTx === 'string') {
+                summary.pendingFeeCharges++;
+                continue;
+            }
+            summary.stripeFees += balanceTx.fee;
+            summary.spotNet += spotIn - balanceTx.fee;
+        }
+
+        res.status(200).json(summary);
+    } catch (err) {
+        errorResponse(res, 500, 'Failed to retrieve platform sales summary', err);
     }
 };
 

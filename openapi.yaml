@@ -962,6 +962,88 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /payments/platform/sales-summary:
+    get:
+      summary: Platform sales summary from Stripe — admin only
+      description: |
+        Sales read directly from Stripe (`charges.list` expanding `balance_transaction` and `payment_intent`). Only `succeeded` charges whose `payment_intent.metadata.appId` matches (and `eventId` when given) are counted. Refunds are not subtracted. Same admin requirement as `/payments/platform/balance`.
+
+        - Connect charges (`transfer_data`): `paidToOrganizers += amount − application_fee_amount`, `spotGross += application_fee_amount`.
+        - Platform charges: `spotGross += amount`.
+        - `stripeFees += balance_transaction.fee`, `spotNet += spotGross − fee`. Charges without a balance transaction yet are counted in `pendingFeeCharges` and left out of `stripeFees` and `spotNet`.
+      parameters:
+        - name: appId
+          in: query
+          required: true
+          schema:
+            type: string
+            example: spot
+        - name: from
+          in: query
+          required: false
+          description: Unix seconds, inclusive
+          schema:
+            type: integer
+        - name: to
+          in: query
+          required: false
+          description: Unix seconds, exclusive
+          schema:
+            type: integer
+        - name: eventId
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Summary in cents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  currency:
+                    type: string
+                    example: mxn
+                  grossSales:
+                    type: integer
+                    example: 10000
+                  paidToOrganizers:
+                    type: integer
+                    example: 9000
+                  spotGross:
+                    type: integer
+                    example: 1000
+                  stripeFees:
+                    type: integer
+                    example: 766
+                  spotNet:
+                    type: integer
+                    example: 234
+                  paymentsCount:
+                    type: integer
+                    example: 1
+                  pendingFeeCharges:
+                    type: integer
+                    example: 0
+        '400':
+          description: Missing appId, or from/to are not unix seconds
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Missing or invalid JWT
+        '403':
+          description: The user is not an admin
+        '500':
+          description: Failed to retrieve platform sales summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /payments/platform/payouts:
     get:
       summary: List platform payouts — admin only
