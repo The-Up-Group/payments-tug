@@ -18,6 +18,17 @@ export interface PlatformPayoutsResponse {
     payouts: PlatformPayout[];
 }
 
+export interface PlatformSalesSummaryResponse {
+    currency: string;
+    grossSales: number;
+    paidToOrganizers: number;
+    spotGross: number;
+    stripeFees: number;
+    spotNet: number;
+    paymentsCount: number;
+    pendingFeeCharges: number;
+}
+
 export interface CreatePlatformPayoutRequest {
     amount: number;
     currency?: string;

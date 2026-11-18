@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { AuthMiddleware } from '../middleware/auth';
 import { AdminMiddleware } from '../middleware/admin';
-import { getPlatformBalance, getPlatformPayouts, createPlatformPayout } from '../controllers/platformControllers';
+import { getPlatformBalance, getPlatformPayouts, createPlatformPayout, getPlatformSalesSummary } from '../controllers/platformControllers';
 import { createPayment, getPaymentStatus, createCheckoutSession, getCheckoutSessionStatus } from '../controllers/paymentControllers';
 import { createOrGetCustomer, listCustomerPaymentMethods, deleteCustomerPaymentMethod, createCustomerSession } from '../controllers/customerControllers';
 import { setupIntents } from '../controllers/setIntentControllers';
@@ -37,5 +37,6 @@ router.delete('/accounts/:accountId', AuthMiddleware, deleteOrganizerAccount);
 router.get('/platform/balance', AuthMiddleware, AdminMiddleware, getPlatformBalance);
 router.get('/platform/payouts', AuthMiddleware, AdminMiddleware, getPlatformPayouts);
 router.post('/platform/payouts', AuthMiddleware, AdminMiddleware, createPlatformPayout);
+router.get('/platform/sales-summary', AuthMiddleware, AdminMiddleware, getPlatformSalesSummary);
 
 export default router;
