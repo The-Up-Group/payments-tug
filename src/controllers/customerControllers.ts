@@ -1,8 +1,11 @@
 import { Request, Response } from 'express';
 import Stripe from 'stripe';
 import { CreateCustomerRequest, CreateCustomereResponse, PaymentMethods, CreateCustomerSessionRequest, CreateCustomerSessionResponse } from '../types/customerTypes';
+import { getOwnedCustomer, requestUser, respondForbiddenCustomer, respondGuestNotAllowed } from '../utils/customerOwnership';
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY as string);
+
+const ALLOW_REDISPLAY_FILTERS: Array<'always' | 'limited' | 'unspecified'> = ['always', 'limited', 'unspecified'];
 
 export const createOrGetCustomer = async (req: Request, res: Response): Promise<void> => {
     const { appId } = req.body as CreateCustomerRequest; 
@@ -20,14 +23,16 @@ export const createOrGetCustomer = async (req: Request, res: Response): Promise<
 
         // Si el usuario ya teien customerId ligado con la app lo devolvemos con el flag isNew = flase
         if (existing.data.length > 0 ){
-            res.status(200).json({ customerId: existing.data[0].id, isNew: false});
+            const oldest = existing.data.reduce((a, b) => (b.created < a.created ? b : a));
+            res.status(200).json({ customerId: oldest.id, isNew: false});
             return;
         }
 
         // si el usuario no existe lo creamos y devolvemos el id con el flag isNew = true
-        const customer = await getStripe().customers.create({
-            metadata: { externalUserId: userId, appId: appId},
-        });
+        const customer = await getStripe().customers.create(
+            { metadata: { externalUserId: userId, appId: appId} },
+            { idempotencyKey: `customer-${appId}-${userId}` },
+        );
         res.status(201).json({ customerId: customer.id, isNew: true });
         return;
     } catch (err) {
@@ -47,7 +52,13 @@ export const listCustomerPaymentMethods = async (req: Request, res: Response): P
         return;
     }
     try {
-        const result = await getStripe().paymentMethods.list({
+        const stripe = getStripe();
+        if (!(await getOwnedCustomer(stripe, customerId, requestUser(req).id))) {
+            respondForbiddenCustomer(res);
+            return;
+        }
+
+        const result = await stripe.paymentMethods.list({
             customer: customerId,
             type: 'card'
         })
@@ -60,7 +71,7 @@ export const listCustomerPaymentMethods = async (req: Request, res: Response): P
             expYear: pm.card?.exp_year,
         }));
 
-        res.status(201).json({ paymentMethods: paymentMethods});
+        res.status(200).json({ paymentMethods: paymentMethods});
         return;
     } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
@@ -79,7 +90,18 @@ export const createCustomerSession = async (req: Request, res: Response): Promis
         return;
     }
     try {
-        const session = await getStripe().customerSessions.create({
+        const user = requestUser(req);
+        if (user.isAnonymous) {
+            respondGuestNotAllowed(res);
+            return;
+        }
+        const stripe = getStripe();
+        if (!(await getOwnedCustomer(stripe, customerId, user.id))) {
+            respondForbiddenCustomer(res);
+            return;
+        }
+
+        const session = await stripe.customerSessions.create({
             customer: customerId,
             components: {
                 payment_element: {
@@ -87,6 +109,8 @@ export const createCustomerSession = async (req: Request, res: Response): Promis
                     features: {
                         payment_method_save: 'enabled',
                         payment_method_remove: 'enabled',
+                        payment_method_redisplay: 'enabled',
+                        payment_method_allow_redisplay_filters: ALLOW_REDISPLAY_FILTERS,
                     },
                 },
                 mobile_payment_element: {
@@ -94,6 +118,8 @@ export const createCustomerSession = async (req: Request, res: Response): Promis
                     features: {
                         payment_method_save: 'enabled',
                         payment_method_remove: 'enabled',
+                        payment_method_redisplay: 'enabled',
+                        payment_method_allow_redisplay_filters: ALLOW_REDISPLAY_FILTERS,
                     },
                 },
             },
@@ -116,7 +142,17 @@ export const deleteCustomerPaymentMethod = async (req: Request, res: Response): 
         return;
     }
     try {
-        await getStripe().paymentMethods.detach(pmId);
+        const stripe = getStripe();
+        const paymentMethod = await stripe.paymentMethods.retrieve(pmId);
+        const ownerCustomerId = typeof paymentMethod.customer === 'string'
+            ? paymentMethod.customer
+            : paymentMethod.customer?.id;
+        if (!ownerCustomerId || !(await getOwnedCustomer(stripe, ownerCustomerId, requestUser(req).id))) {
+            respondForbiddenCustomer(res);
+            return;
+        }
+
+        await stripe.paymentMethods.detach(pmId);
         res.status(200).json({ success: true });
         return
     } catch (err) {

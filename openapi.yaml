@@ -82,6 +82,26 @@ components:
           type: string
           description: Stripe balance transaction id. Stored in `payments.stripe_balance_transaction_id`.
           example: txn_123
+        cardEvidence:
+          type: object
+          description: Only on `payment_intent.succeeded`, read from `latest_charge`. Best-effort, omitted if the charge could not be read. Stored in the `payments.card_*`, `three_ds_result` and `risk_level` columns.
+          properties:
+            cardholderName:
+              type: string
+              description: Name typed on the card form (`billing_details.name`). Not verified by the card network.
+            cardBrand:
+              type: string
+            cardLast4:
+              type: string
+            cardFingerprint:
+              type: string
+              description: Same value for the same card across charges.
+            threeDSecureResult:
+              type: string
+              description: '`payment_method_details.card.three_d_secure.result` (e.g. `authenticated`, `attempt_acknowledged`). Absent when 3DS did not run.'
+            riskLevel:
+              type: string
+              description: Radar `outcome.risk_level`.
         metadata:
           type: object
           description: The PaymentIntent metadata as sent by createPayment / createCheckoutSession
@@ -170,8 +190,20 @@ paths:
                   example: 1
                 paymentMethodId:
                   type: string
-                  description: If provided, intent is confirmed immediately (saved card flow)
+                  description: If provided, intent is confirmed immediately (saved card flow). These off-session charges never request 3DS.
                   example: pm_xxx
+                buyerName:
+                  type: string
+                  description: Buyer full name as entered in the app. Stored in metadata as `buyerName` (max 500 chars) for dispute evidence.
+                  example: Ana López
+                platform:
+                  type: string
+                  description: Client platform (`ios`, `android`, `web`). Stored in metadata as `buyerPlatform`.
+                  example: android
+                appVersion:
+                  type: string
+                  description: Client app version. Stored in metadata as `buyerAppVersion`.
+                  example: 2.3.0+41
       responses:
         '201':
           description: Payment intent created
@@ -303,6 +335,18 @@ paths:
                   type: string
                   description: URL Stripe redirects to for payment methods that require an off-page redirect step (e.g. some 3DS flows), even though the main flow stays embedded
                   example: https://app.spot.mx/checkout/return
+                buyerName:
+                  type: string
+                  description: Same as in `POST /payments`.
+                  example: Ana López
+                platform:
+                  type: string
+                  description: Same as in `POST /payments`.
+                  example: web
+                appVersion:
+                  type: string
+                  description: Same as in `POST /payments`.
+                  example: 2.3.0+41
       responses:
         '201':
           description: Checkout session created
@@ -379,7 +423,7 @@ paths:
   /payments/customers:
     post:
       summary: Create or get Stripe customer
-      description: Finds an existing Stripe customer by userId + appId metadata, or creates a new one.
+      description: Finds an existing Stripe customer by userId + appId metadata, or creates a new one. When duplicates exist the oldest is returned. Creation uses the idempotency key `customer-<appId>-<userId>` so concurrent calls cannot create duplicates while Stripe search is still indexing.
       requestBody:
         required: true
         content:
@@ -435,7 +479,7 @@ paths:
   /payments/customers/session:
     post:
       summary: Create a customer session
-      description: Creates a short-lived Stripe CustomerSession. Pass the returned clientSecret to Stripe.js Payment Element to display and manage saved cards.
+      description: Creates a short-lived Stripe CustomerSession for the PaymentSheet / Payment Element with save, remove and redisplay of saved cards enabled (all `allow_redisplay` values). Rejected with 403 for guest (anonymous) JWTs and for customers that do not belong to the JWT user.
       requestBody:
         required: true
         content:
@@ -465,6 +509,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '403':
+          description: Guest account, or customer does not belong to the authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           description: Failed to create customer session
           content:
@@ -475,7 +525,7 @@ paths:
   /payments/customers/{customerId}/payment-methods:
     get:
       summary: List saved payment methods
-      description: Returns all saved cards for a Stripe customer.
+      description: Returns all saved cards for a Stripe customer. 403 if the customer does not belong to the authenticated user.
       parameters:
         - name: customerId
           in: path
@@ -517,6 +567,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '403':
+          description: Customer does not belong to the authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           description: Failed to retrieve payment methods
           content:
@@ -547,6 +603,12 @@ paths:
                     example: true
         '400':
           description: pmId is required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: The card is not attached to a customer of the authenticated user
           content:
             application/json:
               schema:
@@ -591,6 +653,12 @@ paths:
                     example: seti_xxx_secret_xxx
         '400':
           description: customerId and appId are required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Guest account, or customer does not belong to the authenticated user
           content:
             application/json:
               schema:

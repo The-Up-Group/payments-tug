@@ -12,16 +12,20 @@ const mockCustomersCreate         = jest.fn();
 const mockPaymentMethodsList      = jest.fn();
 const mockPaymentMethodsDetach    = jest.fn();
 const mockCustomerSessionsCreate  = jest.fn();
+const mockCustomersRetrieve       = jest.fn();
+const mockPaymentMethodsRetrieve  = jest.fn();
 
 jest.mock('stripe', () => {
     return jest.fn().mockImplementation(() => ({
         customers: {
             search: mockCustomersSearch,
             create: mockCustomersCreate,
+            retrieve: mockCustomersRetrieve,
         },
         paymentMethods: {
             list:   mockPaymentMethodsList,
             detach: mockPaymentMethodsDetach,
+            retrieve: mockPaymentMethodsRetrieve,
         },
         customerSessions: {
             create: mockCustomerSessionsCreate,
@@ -29,8 +33,14 @@ jest.mock('stripe', () => {
     }));
 });
 
+let currentUser: Record<string, unknown> = {};
+
 const app = express();
 app.use(express.json());
+app.use((req, _res, next) => {
+    (req as any).user = currentUser;
+    next();
+});
 
 // createOrGetCustomer reads req.user.id which is normally set by AuthMiddleware.
 // We simulate that here with a small inline middleware so we don't couple
@@ -46,6 +56,13 @@ app.delete('/payment-methods/:pmId', deleteCustomerPaymentMethod);
 
 beforeAll(() => {
     process.env.STRIPE_SECRET_KEY = 'fake-stripe-key';
+});
+
+beforeEach(() => {
+    jest.clearAllMocks();
+    currentUser = { id: 'user-123', isAnonymous: false };
+    mockCustomersRetrieve.mockResolvedValue({ id: 'cus_123', created: 1, metadata: { externalUserId: 'user-123' } });
+    mockPaymentMethodsRetrieve.mockResolvedValue({ id: 'pm_123', customer: 'cus_123' });
 });
 
 // ─── createOrGetCustomer ──────────────────────────────────────────────────────
@@ -96,6 +113,29 @@ describe('createOrGetCustomer', () => {
         expect(callArgs.metadata.appId).toBe('app_1');
     });
 
+    it('creates the customer with a per-user idempotency key to avoid duplicates', async () => {
+        mockCustomersSearch.mockResolvedValueOnce({ data: [] });
+        mockCustomersCreate.mockResolvedValueOnce({ id: 'cus_new' });
+
+        await request(app).post('/customers').send({ appId: 'app_1' });
+
+        expect(mockCustomersCreate.mock.calls[0][1]).toEqual({ idempotencyKey: 'customer-app_1-user-123' });
+    });
+
+    it('returns the oldest customer when duplicates exist', async () => {
+        mockCustomersSearch.mockResolvedValueOnce({
+            data: [
+                { id: 'cus_newer', created: 300 },
+                { id: 'cus_oldest', created: 100 },
+                { id: 'cus_middle', created: 200 },
+            ],
+        });
+
+        const res = await request(app).post('/customers').send({ appId: 'app_1' });
+
+        expect(res.body.customerId).toBe('cus_oldest');
+    });
+
     it('returns 500 when Stripe throws an error', async () => {
         mockCustomersSearch.mockRejectedValueOnce(new Error('Stripe error'));
 
@@ -125,7 +165,7 @@ describe('listCustomerPaymentMethods', () => {
 
         const res = await request(app).get('/customers/cus_123/payment-methods');
 
-        expect(res.status).toBe(201); // controller uses 201 here
+        expect(res.status).toBe(200);
         expect(res.body.paymentMethods).toHaveLength(2);
         expect(res.body.paymentMethods[0]).toEqual({
             id: 'pm_123',
@@ -141,8 +181,25 @@ describe('listCustomerPaymentMethods', () => {
 
         const res = await request(app).get('/customers/cus_123/payment-methods');
 
-        expect(res.status).toBe(201);
+        expect(res.status).toBe(200);
         expect(res.body.paymentMethods).toEqual([]);
+    });
+
+    it('returns 403 when the customer belongs to another user', async () => {
+        mockCustomersRetrieve.mockResolvedValueOnce({ id: 'cus_other', created: 1, metadata: { externalUserId: 'someone-else' } });
+
+        const res = await request(app).get('/customers/cus_other/payment-methods');
+
+        expect(res.status).toBe(403);
+        expect(mockPaymentMethodsList).not.toHaveBeenCalled();
+    });
+
+    it('returns 403 when the customer was deleted', async () => {
+        mockCustomersRetrieve.mockResolvedValueOnce({ id: 'cus_123', deleted: true });
+
+        const res = await request(app).get('/customers/cus_123/payment-methods');
+
+        expect(res.status).toBe(403);
     });
 
     it('returns 500 when Stripe throws an error', async () => {
@@ -178,6 +235,36 @@ describe('createCustomerSession', () => {
         expect(res.body.clientSecret).toBe('cs_test_secret');
     });
 
+    it('enables saved card redisplay for every allow_redisplay value', async () => {
+        mockCustomerSessionsCreate.mockResolvedValueOnce({ client_secret: 'cs_test_secret' });
+
+        await request(app).post('/customers/session').send({ customerId: 'cus_123' });
+
+        const { components } = mockCustomerSessionsCreate.mock.calls[0][0];
+        for (const element of [components.payment_element, components.mobile_payment_element]) {
+            expect(element.features.payment_method_redisplay).toBe('enabled');
+            expect(element.features.payment_method_allow_redisplay_filters).toEqual(['always', 'limited', 'unspecified']);
+        }
+    });
+
+    it('returns 403 for guest accounts', async () => {
+        currentUser = { id: 'user-123', isAnonymous: true };
+
+        const res = await request(app).post('/customers/session').send({ customerId: 'cus_123' });
+
+        expect(res.status).toBe(403);
+        expect(mockCustomerSessionsCreate).not.toHaveBeenCalled();
+    });
+
+    it('returns 403 when the customer belongs to another user', async () => {
+        mockCustomersRetrieve.mockResolvedValueOnce({ id: 'cus_other', created: 1, metadata: { externalUserId: 'someone-else' } });
+
+        const res = await request(app).post('/customers/session').send({ customerId: 'cus_other' });
+
+        expect(res.status).toBe(403);
+        expect(mockCustomerSessionsCreate).not.toHaveBeenCalled();
+    });
+
     it('returns 500 when Stripe throws an error', async () => {
         mockCustomerSessionsCreate.mockRejectedValueOnce(new Error('Stripe error'));
 
@@ -200,6 +287,25 @@ describe('deleteCustomerPaymentMethod', () => {
 
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
+    });
+
+    it('returns 403 when the card belongs to another user', async () => {
+        mockPaymentMethodsRetrieve.mockResolvedValueOnce({ id: 'pm_other', customer: 'cus_other' });
+        mockCustomersRetrieve.mockResolvedValueOnce({ id: 'cus_other', created: 1, metadata: { externalUserId: 'someone-else' } });
+
+        const res = await request(app).delete('/payment-methods/pm_other');
+
+        expect(res.status).toBe(403);
+        expect(mockPaymentMethodsDetach).not.toHaveBeenCalled();
+    });
+
+    it('returns 403 when the card is not attached to any customer', async () => {
+        mockPaymentMethodsRetrieve.mockResolvedValueOnce({ id: 'pm_loose', customer: null });
+
+        const res = await request(app).delete('/payment-methods/pm_loose');
+
+        expect(res.status).toBe(403);
+        expect(mockPaymentMethodsDetach).not.toHaveBeenCalled();
     });
 
     it('returns 500 when Stripe throws an error', async () => {

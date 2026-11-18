@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import Stripe from 'stripe';
 import { getChargeFinancials } from '../utils/chargeFinancials';
+import { getCardEvidence } from '../utils/cardEvidence';
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
@@ -44,6 +45,10 @@ export const handleStripeWebhook = async (req: Request, res: Response): Promise<
                 const intent = event.data.object;
                 const metadataFee = Number(intent.metadata?.applicationFeeAmount);
                 const financials = await getChargeFinancials(getStripe(), intent.id);
+                const latestChargeId = typeof intent.latest_charge === 'string'
+                    ? intent.latest_charge
+                    : intent.latest_charge?.id;
+                const cardEvidence = await getCardEvidence(getStripe(), latestChargeId);
                 await forwardEvent({
                     type: event.type,
                     paymentIntentId: intent.id,
@@ -52,6 +57,7 @@ export const handleStripeWebhook = async (req: Request, res: Response): Promise<
                     applicationFeeAmount: intent.application_fee_amount
                         ?? (Number.isFinite(metadataFee) ? metadataFee : undefined),
                     ...financials,
+                    ...(cardEvidence && { cardEvidence }),
                     metadata: intent.metadata,
                 });
                 break;

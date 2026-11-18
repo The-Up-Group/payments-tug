@@ -6,9 +6,13 @@ const mockPaymentIntentsCreate    = jest.fn();
 const mockPaymentIntentsRetrieve  = jest.fn();
 const mockCheckoutSessionsCreate  = jest.fn();
 const mockCheckoutSessionsRetrieve = jest.fn();
+const mockCustomersRetrieve = jest.fn();
 
 jest.mock('stripe', () => {
     return jest.fn().mockImplementation(() => ({
+        customers: {
+            retrieve: mockCustomersRetrieve,
+        },
         paymentIntents: {
             create:   mockPaymentIntentsCreate,
             retrieve: mockPaymentIntentsRetrieve,
@@ -22,8 +26,14 @@ jest.mock('stripe', () => {
     }));
 });
 
+let currentUser: Record<string, unknown> = {};
+
 const app = express();
 app.use(express.json());
+app.use((req, _res, next) => {
+    (req as any).user = currentUser;
+    next();
+});
 app.post('/payments', createPayment);
 app.post('/payments/checkout-sessions', createCheckoutSession);
 app.get('/payments/checkout-sessions/:sessionId', getCheckoutSessionStatus);
@@ -31,6 +41,11 @@ app.get('/payments/:id', getPaymentStatus);
 
 beforeAll(() => {
     process.env.STRIPE_SECRET_KEY = 'fake-stripe-key';
+});
+
+beforeEach(() => {
+    currentUser = { id: 'user_1', isAnonymous: false };
+    mockCustomersRetrieve.mockResolvedValue({ id: 'cus_123', created: 1, metadata: { externalUserId: 'user_1' } });
 });
 
 // ─── createPayment ────────────────────────────────────────────────────────────

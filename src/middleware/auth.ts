@@ -31,15 +31,17 @@ export const AuthMiddleware = async (req: Request, res: Response, next: NextFunc
     }
     try {
         const alg = readAlg(token);
-        let sub: string | undefined;
+        let payload: Record<string, unknown>;
         if (alg === 'HS256') {
-            const payload = jwt.verify(token, process.env.JWT_SECRET_KEY as string) as jwt.JwtPayload;
-            sub = payload.sub;
+            payload = jwt.verify(token, process.env.JWT_SECRET_KEY as string) as jwt.JwtPayload;
         } else {
-            const { payload } = await jwtVerify(token, getJwks());
-            sub = payload.sub as string | undefined;
+            payload = (await jwtVerify(token, getJwks())).payload;
         }
-        (req as any).user = {id: sub};
+        (req as any).user = {
+            id: payload.sub as string | undefined,
+            isAnonymous: payload.is_anonymous === true,
+            email: typeof payload.email === 'string' && payload.email ? payload.email : undefined,
+        };
         next();
     } catch {
         res.status(401).json({ error: 'Invalid or expired token' });

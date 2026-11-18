@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import Stripe from 'stripe';
 import { PaymentRequest, CheckoutSessionRequest } from '../types/paymentTypes';
+import { buildBuyerEvidence, shouldRequestThreeDSecure } from '../utils/buyerEvidence';
+import { getOwnedCustomer, requestUser, respondForbiddenCustomer } from '../utils/customerOwnership';
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
@@ -32,7 +34,16 @@ export const createPayment = async (req: Request, res: Response): Promise<void> 
   const platformFee = Math.round(applicationFeeAmount);
 
   try {
-    const paymentIntent = await getStripe().paymentIntents.create({
+    const stripe = getStripe();
+    const user = requestUser(req);
+    const customer = await getOwnedCustomer(stripe, customerId, user.id);
+    if (!customer) {
+        respondForbiddenCustomer(res);
+        return;
+    }
+    const requestThreeDSecure = !paymentMethodId && shouldRequestThreeDSecure(customer, user.isAnonymous);
+
+    const paymentIntent = await stripe.paymentIntents.create({
         amount,
         currency,
         customer: customerId,
@@ -46,7 +57,12 @@ export const createPayment = async (req: Request, res: Response): Promise<void> 
             applicationFeeAmount: String(platformFee),
             ...(guestEmail && { guestEmail }),
             ...(!destinationAccountId && { platformCharge: 'true' }),
+            ...buildBuyerEvidence(req, guestEmail),
+            ...(requestThreeDSecure && { threeDSecureRequested: 'true' }),
         },
+        ...(requestThreeDSecure && {
+            payment_method_options: { card: { request_three_d_secure: 'any' as const } },
+        }),
         ...(paymentMethodId && {
             payment_method: paymentMethodId,
             confirm: true,
@@ -99,10 +115,32 @@ export const createCheckoutSession = async (req: Request, res: Response): Promis
       applicationFeeAmount: String(platformFee),
       ...(guestEmail && { guestEmail }),
       ...(!destinationAccountId && { platformCharge: 'true' }),
+      ...buildBuyerEvidence(req, guestEmail),
   };
 
   try {
-    const session = await getStripe().checkout.sessions.create({
+    const stripe = getStripe();
+    const user = requestUser(req);
+    const customer = await getOwnedCustomer(stripe, customerId, user.id);
+    if (!customer) {
+        respondForbiddenCustomer(res);
+        return;
+    }
+    const requestThreeDSecure = shouldRequestThreeDSecure(customer, user.isAnonymous);
+    if (requestThreeDSecure) {
+        Object.assign(metadata, { threeDSecureRequested: 'true' });
+    }
+
+    const session = await stripe.checkout.sessions.create({
+        ...(requestThreeDSecure && {
+            payment_method_options: { card: { request_three_d_secure: 'any' as const } },
+        }),
+        ...(!user.isAnonymous && {
+            saved_payment_method_options: {
+                payment_method_save: 'enabled' as const,
+                allow_redisplay_filters: ['always', 'limited', 'unspecified'] as Array<'always' | 'limited' | 'unspecified'>,
+            },
+        }),
         ui_mode: 'embedded_page',
         mode: 'payment',
         customer: customerId,

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import Stripe from 'stripe';
 import { CreateSetupIntentRequest } from '../types/setupIntentTypes';
+import { getOwnedCustomer, requestUser, respondForbiddenCustomer, respondGuestNotAllowed } from '../utils/customerOwnership';
 
 const getStripe = () => new Stripe(process.env.STRIPE_SECRET_KEY as string);
 
@@ -13,7 +14,18 @@ export const setupIntents = async (req: Request, res: Response): Promise<void> =
     }
 
     try{
-        const setupIntent = await getStripe().setupIntents.create({
+        const user = requestUser(req);
+        if (user.isAnonymous) {
+            respondGuestNotAllowed(res);
+            return;
+        }
+        const stripe = getStripe();
+        if (!(await getOwnedCustomer(stripe, customerId, user.id))) {
+            respondForbiddenCustomer(res);
+            return;
+        }
+
+        const setupIntent = await stripe.setupIntents.create({
             customer: customerId,
             usage: 'off_session',
             metadata: { appId: appId }, 

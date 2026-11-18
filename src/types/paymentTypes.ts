@@ -13,6 +13,9 @@ export interface PaymentRequest {
     /** Solo presente en compras de guest checkout — viaja en el metadata del
      * PaymentIntent para que el webhook pueda escribirlo en `event_bookings.guest_email`. */
     guestEmail?: string;
+    buyerName?: string;
+    platform?: string;
+    appVersion?: string;
 }
 
 export interface PaymentResponse {
@@ -42,6 +45,9 @@ export interface CheckoutSessionRequest {
     returnUrl: string;
     /** Ver `PaymentRequest.guestEmail`. */
     guestEmail?: string;
+    buyerName?: string;
+    platform?: string;
+    appVersion?: string;
 }
 
 export interface CheckoutSessionResponse {
